@@ -1,0 +1,10 @@
+claude-agent-sdk>=0.2.140
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sse-starlette>=2.0.0
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+aiosqlite>=0.20.0
+httpx>=0.27.0
+bcrypt>=4.2.0
+uuid6>=2024.0.0

@@ -1,0 +1,18 @@
+[project]
+name = "doc-agent-py"
+version = "0.1.0"
+description = "电子公文智能处理 — Claude Code Agent SDK 网关 (Python版)"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "claude-agent-sdk>=0.2.140",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "sse-starlette>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.0",
+    "aiosqlite>=0.20.0",
+    "httpx>=0.27.0",
+    "bcrypt>=4.2.0",
+    "uuid6>=2024.0.0",
+    "python-multipart>=0.0.9",
+]

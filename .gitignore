@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.venv/
+venv/
+
+# 构建产物
+dist/
+*.log
+.env
+
+# 构建临时目录 (build.sh 生成，会重新下载/生成)
+deploy/
+
+# 运行时数据（保留模板，忽略实际数据）
+data/app.db
+data/app.db-shm
+data/app.db-wal
+data/cfg.yml
+data/logs/
+data/tasks/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

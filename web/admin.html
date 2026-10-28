@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/lib/font-awesome.all.min.css">
+    <link rel="stylesheet" href="/static/css/admin.css">
+    <title>doc_process_agent 管理后台</title>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1><i class="fas fa-cogs"></i> doc_process_agent 管理后台</h1>
+        <p>接口管理 &middot; 任务日志</p>
+        <button class="logout-btn" onclick="doLogout()"><i class="fas fa-sign-out-alt"></i> 退出登录</button>
+    </header>
+
+    <div class="cfg-layout">
+        <nav class="cfg-sidebar">
+            <div class="cfg-tab active" data-tab="interfaces">
+                <i class="fas fa-plug"></i> 接口管理
+            </div>
+            <div class="cfg-tab" data-tab="tasks">
+                <i class="fas fa-list-alt"></i> 任务日志
+            </div>
+        </nav>
+
+        <div class="cfg-content">
+            <!-- ========== 接口管理 ========== -->
+            <div class="cfg-section active" id="section-interfaces">
+                <h2><i class="fas fa-plug"></i> 接口管理</h2>
+                <p>每个接口 = 一个对外 path + 一段提示词模板。调用方 POST /api/v1/&lt;path&gt; 时按 path 匹配模板。</p>
+                <button class="cfg-btn cfg-btn-save" onclick="editInterface()" style="margin-bottom:16px;">
+                    <i class="fas fa-plus"></i> 新建接口
+                </button>
+                <table class="result-table">
+                    <thead><tr><th>名称</th><th>Path</th><th>更新时间</th><th>操作</th></tr></thead>
+                    <tbody id="ifacesTbody"><tr><td colspan="4" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                </table>
+
+                <div id="ifaceModal" class="modal-overlay">
+                    <div class="modal-lg">
+                        <h3 id="ifaceModalTitle"><i class="fas fa-plug"></i> 新建接口</h3>
+                        <form id="ifaceForm" style="margin-top:20px;">
+                            <input type="hidden" id="ifaceId" value="">
+                            <div class="form-g">
+                                <label>接口名称 <span style="color:#e53935;">*</span></label>
+                                <input type="text" id="fName" required placeholder="如：收文分类">
+                            </div>
+                            <div class="form-g">
+                                <label>Path <span style="color:#e53935;">*</span></label>
+                                <input type="text" id="fPath" required placeholder="如：document/classify">
+                                <div class="field-hint">调用方通过 <code>POST /api/v1/&lt;path&gt;</code> 访问此接口</div>
+                            </div>
+                            <div class="form-g">
+                                <label>提示词模板 <span style="color:#e53935;">*</span></label>
+                                <textarea id="fPrompt" required placeholder="# 文档处理任务..."></textarea>
+                                <div class="field-hint">
+                                    可用占位符: <code>{{request.body}}</code> <code>{{request.linkid}}</code> <code>{{request.form_data}}</code> <code>{{request.files}}</code> ...
+                                    任意字段均可通过 <code>{{request.xxx.yyy}}</code> 引用
+                                </div>
+                            </div>
+                            <div class="modal-actions">
+                                <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeModal()">取消</button>
+                                <button type="submit" class="cfg-btn cfg-btn-save">保存</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== 任务日志 ========== -->
+            <div class="cfg-section" id="section-tasks">
+                <h2><i class="fas fa-list-alt"></i> 任务日志</h2>
+                <table class="result-table">
+                    <thead><tr><th>Task ID</th><th>LinkID</th><th>Path</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
+                    <tbody id="tasksTbody"><tr><td colspan="6" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                </table>
+
+                <div id="taskModal" class="modal-overlay">
+                    <div class="modal-lg">
+                        <h3 id="taskModalTitle"><i class="fas fa-search"></i> 任务详情</h3>
+                        <div id="taskDetail" style="margin-top:20px;"></div>
+                        <div class="modal-actions">
+                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeTaskModal()">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="cfg-toast"></div>
+</div>
+
+<script>
+const API = '/admin';
+
+// ==== Sidebar tabs ====
+document.querySelectorAll('.cfg-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.cfg-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        document.querySelectorAll('.cfg-section').forEach(s => s.classList.remove('active'));
+        const section = document.getElementById('section-' + tab.dataset.tab);
+        if (section) section.classList.add('active');
+        if (tab.dataset.tab === 'interfaces') loadInterfaces();
+        else if (tab.dataset.tab === 'tasks') loadTasks();
+    });
+});
+
+// ==== Toast ====
+function toast(msg, type) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'cfg-toast ' + (type || 'success');
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 2500);
+}
+
+// ==== Modal helpers ====
+function closeModal() { document.getElementById('ifaceModal').classList.remove('show'); }
+function closeTaskModal() { document.getElementById('taskModal').classList.remove('show'); }
+
+// ==== Interfaces ====
+async function loadInterfaces() {
+    const res = await fetch(API + '/interfaces');
+    const json = await res.json();
+    const list = Array.isArray(json.data) ? json.data : [];
+    const tbody = document.getElementById('ifacesTbody');
+    if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:24px;">暂无接口，点击"新建接口"开始</td></tr>';
+        return;
+    }
+    tbody.innerHTML = list.map(i => {
+        const id = JSON.stringify(i.id);
+        const name = escHtml(i.name);
+        const path = escHtml(i.path);
+        const ts = fmtTs(i.updated_at);
+        return `<tr>
+            <td>${name}</td>
+            <td><span class="path-mono">${path}</span></td>
+            <td>${ts}</td>
+            <td>
+                <button class="cfg-btn-sm" onclick='editInterface(${JSON.stringify(i)})'><i class="fas fa-edit"></i> 编辑</button>
+                <button class="cfg-btn-danger-sm" onclick="deleteInterface('${id}','${name}')"><i class="fas fa-trash"></i> 删除</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function editInterface(existing) {
+    const isNew = !existing;
+    document.getElementById('ifaceId').value = isNew ? '' : existing.id;
+    document.getElementById('fName').value = isNew ? '' : existing.name;
+    document.getElementById('fPath').value = isNew ? '' : existing.path;
+    document.getElementById('fPrompt').value = isNew ? '' : existing.prompt;
+    document.getElementById('ifaceModalTitle').innerHTML = '<i class="fas fa-plug"></i> ' + (isNew ? '新建接口' : '编辑接口');
+    document.getElementById('ifaceModal').classList.add('show');
+}
+
+document.getElementById('ifaceForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('ifaceId').value;
+    const name = document.getElementById('fName').value.trim();
+    const path = document.getElementById('fPath').value.trim();
+    const prompt = document.getElementById('fPrompt').value;
+    if (!name || !path || !prompt) return toast('请填写所有字段', 'error');
+
+    const url = id ? API + '/interfaces/' + encodeURIComponent(id) : API + '/interfaces';
+    const method = id ? 'PUT' : 'POST';
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, path, prompt }) });
+    const body = await res.json();
+    if (body.code !== 0) return toast('保存失败: ' + (body.message || ''), 'error');
+    closeModal();
+    toast(id ? '接口已更新' : '接口已创建');
+    loadInterfaces();
+});
+
+async function deleteInterface(id, name) {
+    if (!confirm('确认删除「' + name + '」?')) return;
+    const res = await fetch(API + '/interfaces/' + encodeURIComponent(id), { method: 'DELETE' });
+    if (res.ok) { toast('已删除'); loadInterfaces(); }
+    else toast('删除失败', 'error');
+}
+
+// ==== Tasks ====
+async function loadTasks() {
+    const res = await fetch(API + '/tasks?limit=100');
+    const json = await res.json();
+    const list = Array.isArray(json.data) ? json.data : [];
+    const tbody = document.getElementById('tasksTbody');
+    if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">暂无任务</td></tr>';
+        return;
+    }
+    tbody.innerHTML = list.map(t => {
+        const taskId = escHtml(t.task_id);
+        return `<tr>
+            <td style="font-family:monospace;font-size:0.8rem;">${taskId.substring(0, 18)}...</td>
+            <td>${escHtml(t.linkid || '-')}</td>
+            <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
+            <td><span class="badge badge-${statusBadgeClass(t.status)}">${t.status}</span></td>
+            <td>${fmtTs(t.created_at)}</td>
+            <td><button class="cfg-btn-sm" onclick="viewTask('${taskId}')"><i class="fas fa-search"></i> 详情</button></td>
+        </tr>`;
+    }).join('');
+}
+
+async function viewTask(taskId) {
+    const res = await fetch(API + '/tasks/' + encodeURIComponent(taskId));
+    const json = await res.json();
+    const t = json.data;
+    if (!t) return toast('未找到', 'error');
+
+    document.getElementById('taskDetail').innerHTML = taskDetailHtml(t);
+    document.getElementById('taskModalTitle').innerHTML = '<i class="fas fa-search"></i> 任务详情';
+    document.getElementById('taskModal').classList.add('show');
+}
+
+function taskDetailHtml(t) {
+    return `
+        <table class="kv-table">
+            <tr><td class="kv-key">Task ID</td><td style="font-family:monospace;">${escHtml(t.task_id)}</td></tr>
+            <tr><td class="kv-key">LinkID</td><td>${escHtml(t.linkid || '-')}</td></tr>
+            <tr><td class="kv-key">Path</td><td><span class="path-mono">${escHtml(t.path || '-')}</span></td></tr>
+            <tr><td class="kv-key">状态</td><td><span class="badge badge-${statusBadgeClass(t.status)}">${t.status}</span></td></tr>
+            <tr><td class="kv-key">创建时间</td><td>${fmtTs(t.created_at)}</td></tr>
+            <tr><td class="kv-key">完成时间</td><td>${fmtTs(t.finished_at)}</td></tr>
+            <tr><td class="kv-key">错误信息</td><td>${escHtml(t.error_message || '(无)')}</td></tr>
+        </table>
+        <div class="kv-section"><i class="fas fa-arrow-right"></i> 请求体</div>
+        <div class="task-detail-json">${escHtml(jsonFmt(t.request_body))}</div>
+        <div class="kv-section"><i class="fas fa-arrow-right"></i> 提示词</div>
+        <div class="task-detail-json">${escHtml(t.prompt || '(未记录)')}</div>
+        <div class="kv-section"><i class="fas fa-arrow-right"></i> Claude 输出</div>
+        <div class="task-detail-json">${escHtml(t.sdk_output || '(未记录)')}</div>
+        <div class="kv-section"><i class="fas fa-arrow-right"></i> SDK 调用追踪</div>
+        <div class="task-detail-json">${escHtml(jsonFmt(t.sdk_trace))}</div>
+        <div class="kv-section"><i class="fas fa-arrow-right"></i> 回调体</div>
+        <div class="task-detail-json">${escHtml(jsonFmt(t.callback_body))}</div>
+    `;
+}
+
+// ==== Utilities ====
+function escHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtTs(s) { if (!s) return '-'; try { return new Date(s).toLocaleString('zh-CN'); } catch { return s; } }
+function jsonFmt(v) { if (typeof v === 'string') try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; } return JSON.stringify(v, null, 2); }
+function statusBadgeClass(s) {
+    switch (s) {
+        case 'pending': return 'pending';
+        case 'processing': return 'processing';
+        case 'success':
+        case 'completed': return 'completed';
+        case 'failed':
+        case 'callback_fail': return 'failed';
+        case 'cancelled': return 'cancelled';
+        default: return 'processing';
+    }
+}
+
+// Close modal on overlay click
+document.getElementById('ifaceModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+document.getElementById('taskModal').addEventListener('click', function(e) { if (e.target === this) closeTaskModal(); });
+
+// Init
+loadInterfaces();
+
+async function doLogout() {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login';
+}
+</script>
+</body>
+</html>

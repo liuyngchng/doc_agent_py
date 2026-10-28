@@ -1,0 +1,76 @@
+# ============================================================================
+# doc_process_agent 配置模板
+# ============================================================================
+# 复制此文件为 cfg.yml 并根据实际环境修改:
+#   cp cfg.yml.template cfg.yml
+#
+# 配置优先级: 环境变量 > cfg.yml > 默认值
+# ============================================================================
+
+# ---- 服务配置 ----
+server:
+  # HTTP/HTTPS 监听端口
+  port: 20001
+
+  # 调试模式: true=开启(日志更详细), false=关闭(生产环境)
+  debug: false
+
+  # HTTPS 证书路径（留空则使用 HTTP）
+  cert_file: "deploy/certs/cert.pem"
+  key_file: "deploy/certs/key.pem"
+
+# ---- 系统配置 ----
+sys:
+  # Worker 数量 = 同时调用 Claude Agent SDK 的任务数上限
+  max_concurrent_tasks: 5
+
+  # 任务总数上限 (pending + processing)，超过后拒单返回 code=2002
+  max_pending_tasks: 10
+
+  # 回调认证 Bearer token（由对方提供，留空则不发送 Authorization 头）
+  callback_url_token: ""
+
+  # 回调失败最大重试次数
+  callback_retries: 3
+
+  # 回调重试基础间隔（秒），指数退避: base_s → 2*base_s → 4*base_s
+  callback_retry_interval_sec: 2
+
+  # 运行时数据保留天数（task_logs + files 自动清理）
+  retention_days: 30
+
+  # Claude Code Agent SDK 默认模型
+  model: "claude-sonnet-4-20250514"
+
+  # 文档解析服务地址（自签名 HTTPS），Claude 通过 curl -k 调用提取 PDF/DOCX 文本
+  doc_util_url: "https://docutil-server:8080"
+
+# ---- LLM 适配器配置（必填，指向 Anthropic 协议兼容网关） ----
+# 本服务通过网关调用 LLM，base_url 留空则启动时报错退出。
+llm:
+  # 网关地址【必填】
+  base_url: "http://api_adapter_g_app:16005"
+
+  # 网关认证 token（对应网关的 llm_api_key；网关未启用认证可留空）
+  auth_token: ""
+
+  # 各模型映射（由网关转发到真实模型）
+  model: "deepseek-v4-pro[1m]"
+  opus_model: "deepseek-v4-pro[1m]"
+  sonnet_model: "deepseek-v4-pro[1m]"
+  haiku_model: "deepseek-v4-flash[1m]"
+  subagent_model: "deepseek-v4-flash[1m]"
+
+  # 推理强度: low | medium | high | xhigh | max
+  effort_level: "max"
+
+  # API 超时（毫秒）
+  timeout_ms: 600000
+
+  # 离线/私有部署优化：关闭非必要遥测
+  disable_nonessential_traffic: true
+  # 关闭 Co-Authored-By 归因头
+  attribution_header: false
+
+# ---- 数据目录（可选，默认程序运行目录下的 data/） ----
+# data_dir: "/app/data"
