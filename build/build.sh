@@ -245,22 +245,32 @@ else
 fi
 
 # ---- HTTPS certs ------------------------------------------------------------
-CERTS_DIR="$PROJECT_ROOT/deploy/certs"
-CERT_FILE="$CERTS_DIR/cert.pem"
-KEY_FILE="$CERTS_DIR/key.pem"
+# 证书持久化在 build/certs/（不随 deploy/ 清掉），build 时 copy 进 deploy/。
+PERSIST_CERTS_DIR="${SCRIPT_DIR}/certs"
+PERSIST_CERT_FILE="${PERSIST_CERTS_DIR}/cert.pem"
+PERSIST_KEY_FILE="${PERSIST_CERTS_DIR}/key.pem"
 
-if [[ ! -f "$CERT_FILE" || ! -f "$KEY_FILE" ]]; then
+if [[ -f "$PERSIST_CERT_FILE" && -f "$PERSIST_KEY_FILE" ]]; then
+  echo "[build] HTTPS 证书已存在，直接复用: $PERSIST_CERTS_DIR/"
+else
   if command -v openssl &>/dev/null; then
     echo "[build] 生成自签名 HTTPS 证书 (RSA-2048, 10年)"
+    mkdir -p "$PERSIST_CERTS_DIR"
     openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
-      -keyout "$KEY_FILE" \
-      -out "$CERT_FILE" \
+      -keyout "$PERSIST_KEY_FILE" \
+      -out "$PERSIST_CERT_FILE" \
       -subj "/C=CN/O=doc_agent_py/CN=localhost" \
       -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" 2>/dev/null
+  else
+    echo "[build] 警告: 未找到 openssl，跳过证书生成，服务将使用 HTTP"
   fi
 fi
 
-if [[ -f "$CERT_FILE" && -f "$KEY_FILE" ]]; then
+# Copy into deploy/ build context
+DEPLOY_CERTS_DIR="$PROJECT_ROOT/deploy/certs"
+mkdir -p "$DEPLOY_CERTS_DIR"
+if [[ -f "$PERSIST_CERT_FILE" && -f "$PERSIST_KEY_FILE" ]]; then
+  cp "$PERSIST_CERT_FILE" "$PERSIST_KEY_FILE" "$DEPLOY_CERTS_DIR/"
   DOCKER_BUILD_ARGS+=(--build-arg "HTTPS_CERT=1")
   echo "[build] HTTPS 证书已就绪"
 fi

@@ -14,6 +14,9 @@ dist/
 # 构建临时目录 (build.sh 生成，会重新下载/生成)
 deploy/
 
+# 自签 HTTPS 证书（私钥，不提交）
+build/certs/
+
 # 运行时数据（保留模板，忽略实际数据）
 data/app.db
 data/app.db-shm
