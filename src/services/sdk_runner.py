@@ -65,7 +65,7 @@ def _build_env(cfg: Config) -> dict[str, str | None]:
 
 
 def _build_claude_md(doc_util_url: str) -> str:
-    return f"""# doc_process_agent 工作区
+    return f"""# doc_agent_py 工作区
 
 你是电子公文处理智能体，运行在这个临时工作目录中。
 

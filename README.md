@@ -1,6 +1,6 @@
 # doc_agent_py — 电子公文智能处理 Agent（Python 版）
 
-这是 [`doc_process_agent`](https://github.com/your-org/doc_process_agent)（TypeScript/Express 版）
+这是 doc_process_agent（TypeScript/Express 版）
 的 Python 重写，功能等价，技术栈替换为 **FastAPI + Claude Agent SDK (Python)**。
 
 ## 与 TypeScript 版的功能一致性

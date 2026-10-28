@@ -6,16 +6,15 @@ FastAPI + HTTPS 支持（可选自签证书）。
 
 from __future__ import annotations
 
-import ssl
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import load_config, ensure_dirs
-from .logger import init_logger
+from .config import load_config, ensure_dirs, Config
+from .logger import init_logger, get_logger
 from .store import init_store
 from .services.task_queue import init_task_queue
 from .routes.health import router as health_router
@@ -23,10 +22,10 @@ from .routes.auth import router as auth_router
 from .routes.process import create_process_router
 from .routes.tasks import router as tasks_router
 from .routes.admin import router as admin_router
-from .routes.auth import get_current_user
 
 
-def create_app() -> FastAPI:
+def create_app() -> tuple[FastAPI, Config]:
+    """构建 FastAPI 应用并初始化依赖。"""
     cfg = load_config()
     ensure_dirs(cfg)
 
@@ -40,7 +39,7 @@ def create_app() -> FastAPI:
     init_task_queue(cfg)
     log.info("task_queue_ready")
 
-    app = FastAPI(title="doc_process_agent 管理后台", docs_url=None, redoc_url=None)
+    app = FastAPI(title="doc_agent_py 管理后台", docs_url=None, redoc_url=None)
 
     # 公开路由
     app.include_router(health_router)
@@ -86,6 +85,7 @@ def create_app() -> FastAPI:
 
 
 app, cfg = create_app()
+log = get_logger()
 
 
 def main() -> None:

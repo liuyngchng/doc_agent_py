@@ -45,22 +45,36 @@ case "${1:-start}" in
       --restart unless-stopped \
       "$IMAGE"
     echo "[deploy] Started on port $HOST_PORT"
+    echo ""
+
     if [ -n "$LOCAL_IP" ]; then
-      echo "  管理后台:  http://$LOCAL_IP:$HOST_PORT/admin"
-      echo "  健康检查:  http://$LOCAL_IP:$HOST_PORT/health"
+      echo "  管理后台:  https://$LOCAL_IP:$HOST_PORT/admin"
+      echo "  健康检查:  https://$LOCAL_IP:$HOST_PORT/health"
+      echo "  业务接口:  POST https://$LOCAL_IP:$HOST_PORT/api/v1/<path>"
+    else
+      echo "  管理后台:  https://localhost:$HOST_PORT/admin"
+      echo "  健康检查:  https://localhost:$HOST_PORT/health"
+      echo "  业务接口:  POST https://localhost:$HOST_PORT/api/v1/<path>"
     fi
+    echo ""
+    echo "  (自签证书，浏览器访问请点\"高级\"→\"继续\")"
+    echo ""
     ;;
+
   stop)
     docker stop "$CONTAINER" || true
     docker rm "$CONTAINER" || true
     echo "[deploy] Stopped"
     ;;
+
   restart)
     "$0" stop; "$0" start
     ;;
+
   logs)
     docker logs -f --tail=100 "$CONTAINER"
     ;;
+
   status)
     if docker container inspect "$CONTAINER" >/dev/null 2>&1; then
       docker inspect "$CONTAINER" --format 'Status: {{.State.Status}} | Started: {{.State.StartedAt}}'

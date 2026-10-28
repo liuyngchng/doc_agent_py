@@ -71,6 +71,53 @@ HTTPS_PROXY_VAL="${HTTPS_PROXY_VAL:-${HTTPS_PROXY:-${https_proxy:-}}}"
 NO_PROXY_VAL="${NO_PROXY_VAL:-${NO_PROXY:-${no_proxy:-}}}"
 PIP_DOWNLOAD_DIR_VAL="${PIP_DOWNLOAD_DIR_VAL:-${PIP_DOWNLOAD_DIR:-}}"
 
+# ---- Interactive pip offline dir prompt (only when not already set) ----------
+PIP_LAST_DIR_FILE="${SCRIPT_DIR}/.last-pip-dir"
+
+# Restore last used directory as suggestion
+PIP_SUGGESTED_DIR=""
+if [[ -f "$PIP_LAST_DIR_FILE" ]]; then
+  PIP_SUGGESTED_DIR="$(head -1 "$PIP_LAST_DIR_FILE")"
+fi
+# Fallback: if a known directory exists, suggest it
+if [[ -z "$PIP_SUGGESTED_DIR" ]] || [[ ! -d "$PIP_SUGGESTED_DIR" ]]; then
+  for guess in /media/rd/SD2TB/whl_py_dir_docx; do
+    if [[ -d "$guess" ]]; then
+      PIP_SUGGESTED_DIR="$guess"
+      break
+    fi
+  done
+fi
+
+if [[ -z "$PIP_DOWNLOAD_DIR_VAL" ]] && [[ -t 0 ]]; then
+  echo ""
+  echo -n "使用 pip 离线目录？ [y/n]: "
+  read -r USER_CHOICE
+  case "$USER_CHOICE" in
+    n|N|no|No|NO)
+      echo " → 跳过离线目录，pip 将在线安装"
+      ;;
+    y|Y|yes|Yes|YES)
+      if [[ -n "$PIP_SUGGESTED_DIR" ]]; then
+        read -e -i "$PIP_SUGGESTED_DIR" -r -p "pip 离线目录路径: " PIP_DOWNLOAD_DIR_VAL
+      else
+        read -r -p "pip 离线目录路径: " PIP_DOWNLOAD_DIR_VAL
+      fi
+      echo " → 使用: $PIP_DOWNLOAD_DIR_VAL"
+      ;;
+    *)
+      # Treat any non-n input as a direct path
+      PIP_DOWNLOAD_DIR_VAL="$USER_CHOICE"
+      echo " → 使用: $PIP_DOWNLOAD_DIR_VAL"
+      ;;
+  esac
+fi
+
+# Persist the chosen directory for next time
+if [[ -n "$PIP_DOWNLOAD_DIR_VAL" ]]; then
+  echo "$PIP_DOWNLOAD_DIR_VAL" > "$PIP_LAST_DIR_FILE"
+fi
+
 # 自动补全 scheme
 add_scheme() {
   local v="$1"
