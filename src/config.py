@@ -30,13 +30,15 @@ class ServerConfig:
 class SysConfig:
     max_concurrent_tasks: int = 5
     max_pending_tasks: int = 10
-    callback_url_token: str = ""
     callback_retries: int = 3
     callback_retry_interval_sec: int = 2
     retention_days: int = 30
     model: str = "claude-sonnet-4-20250514"
     data_dir: str = DATA_DIR
     doc_util_url: str = "https://doc_util_server:8443"
+    renew_file_url_api: str = ""
+    file_url_token: str = ""
+    api_token: str = ""
 
 
 @dataclass
@@ -126,7 +128,6 @@ def load_config() -> Config:
         sys=SysConfig(
             max_concurrent_tasks=_env_int("MAX_CONCURRENT_TASKS", y.get("max_concurrent_tasks", 5)),
             max_pending_tasks=_env_int("MAX_PENDING_TASKS", y.get("max_pending_tasks", 10)),
-            callback_url_token=_env("CALLBACK_URL_TOKEN", y.get("callback_url_token", "")),
             callback_retries=_env_int("CALLBACK_RETRIES", y.get("callback_retries", 3)),
             callback_retry_interval_sec=_env_int(
                 "CALLBACK_RETRY_INTERVAL_SEC", y.get("callback_retry_interval_sec", 2)
@@ -135,6 +136,9 @@ def load_config() -> Config:
             model=_env("MODEL", y.get("model", "claude-sonnet-4-20250514")),
             data_dir=_env("DATA_DIR", y.get("data_dir", DATA_DIR)),
             doc_util_url=_env("DOC_UTIL_URL", y.get("doc_util_url", "https://doc_util_server:8443")),
+            renew_file_url_api=_env("RENEW_FILE_URL_API", y.get("renew_file_url_api", "")),
+            file_url_token=_env("FILE_URL_TOKEN", y.get("file_url_token", "")),
+            api_token=_env("API_TOKEN", y.get("api_token", "")),
         ),
         llm=LlmConfig(
             base_url=llm_base_url,

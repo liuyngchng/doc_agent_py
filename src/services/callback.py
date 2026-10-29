@@ -14,7 +14,6 @@ import httpx
 
 from ..config import Config
 from ..logger import get_logger
-from ..types import ApiResponse
 
 log = get_logger()
 
@@ -51,13 +50,13 @@ async def _post_once(url: str, payload: str, token: str | None = None) -> bool:
 
 async def deliver_callback(
     callback_url: str,
-    payload: ApiResponse,
+    payload: dict,
     cfg: Config,
 ) -> CallbackResult:
     """投递回调，重试最多 N 次（指数退避）。"""
     max_retries = cfg.sys.callback_retries
     base_interval = cfg.sys.callback_retry_interval_sec
-    token = cfg.sys.callback_url_token or None
+    token = cfg.sys.file_url_token or None
     body_str = json.dumps(payload, ensure_ascii=False, default=str)
 
     log.info("callback_start task_id=%s url=%s", payload.get("task_id", ""), callback_url)

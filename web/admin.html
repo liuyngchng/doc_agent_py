@@ -20,6 +20,9 @@
             <div class="cfg-tab active" data-tab="interfaces">
                 <i class="fas fa-plug"></i> 接口管理
             </div>
+            <div class="cfg-tab" data-tab="simulate">
+                <i class="fas fa-flask"></i> 模拟操作
+            </div>
             <div class="cfg-tab" data-tab="tasks">
                 <i class="fas fa-list-alt"></i> 任务日志
             </div>
@@ -69,6 +72,38 @@
                 </div>
             </div>
 
+            <!-- ========== 模拟操作 ========== -->
+            <div class="cfg-section" id="section-simulate">
+                <h2><i class="fas fa-flask"></i> 模拟操作</h2>
+                <p>选择接口并输入测试数据，提交后自动调用 SDK 并记录结果到任务日志。</p>
+
+                <div class="sim-layout">
+                    <div class="sim-input">
+                        <div class="form-g">
+                            <label>选择接口 <span style="color:#e53935;">*</span></label>
+                            <select id="simIface" required>
+                                <option value="">-- 请选择接口 --</option>
+                            </select>
+                        </div>
+                        <div class="form-g">
+                            <label>LinkID</label>
+                            <input type="text" id="simLinkid" placeholder="留空则自动生成 sim-xxxx">
+                        </div>
+                        <div class="form-g">
+                            <label>请求体 JSON <span style="color:#e53935;">*</span></label>
+                            <textarea id="simBody" required spellcheck="false"></textarea>
+                            <div class="field-hint">
+                                请求体通过 <code>{{request.xxx}}</code> 占位符引用。字段可自由增删。
+                            </div>
+                        </div>
+                        <button id="simSubmit" class="cfg-btn cfg-btn-save">
+                            <i class="fas fa-play"></i> 提交测试
+                        </button>
+                        <span id="simStatus" class="sim-status-bar"></span>
+                    </div>
+                </div>
+            </div>
+
             <!-- ========== 任务日志 ========== -->
             <div class="cfg-section" id="section-tasks">
                 <h2><i class="fas fa-list-alt"></i> 任务日志</h2>
@@ -105,6 +140,7 @@ document.querySelectorAll('.cfg-tab').forEach(tab => {
         const section = document.getElementById('section-' + tab.dataset.tab);
         if (section) section.classList.add('active');
         if (tab.dataset.tab === 'interfaces') loadInterfaces();
+        else if (tab.dataset.tab === 'simulate') loadSimulateTab();
         else if (tab.dataset.tab === 'tasks') loadTasks();
     });
 });
@@ -233,7 +269,7 @@ function taskDetailHtml(t) {
         <div class="task-detail-json">${escHtml(jsonFmt(t.request_body))}</div>
         <div class="kv-section"><i class="fas fa-arrow-right"></i> 提示词</div>
         <div class="task-detail-json">${escHtml(t.prompt || '(未记录)')}</div>
-        <div class="kv-section"><i class="fas fa-arrow-right"></i> Claude 输出</div>
+        <div class="kv-section"><i class="fas fa-arrow-right"></i> Agent 输出</div>
         <div class="task-detail-json">${escHtml(t.sdk_output || '(未记录)')}</div>
         <div class="kv-section"><i class="fas fa-arrow-right"></i> SDK 调用追踪</div>
         <div class="task-detail-json">${escHtml(jsonFmt(t.sdk_trace))}</div>
@@ -241,6 +277,132 @@ function taskDetailHtml(t) {
         <div class="task-detail-json">${escHtml(jsonFmt(t.callback_body))}</div>
     `;
 }
+
+// ==== Simulate ====
+const SIM_POLL_MAX = 120;
+const SIM_POLL_MS = 1000;
+
+const DEFAULT_BODY = `{
+  "linkid": "sim-xxx",
+  "callback_url": "",
+  "files": [
+    {"file_url": "http://example.com/doc.pdf", "file_name": "doc.pdf"}
+  ],
+  "form_data": {
+    "doc_type": "company",
+    "source_type": "group"
+  }
+}`;
+
+function buildSimLinkid() {
+    return 'sim-' + Math.random().toString(16).slice(2, 10);
+}
+
+async function loadSimulateTab() {
+    // 加载接口下拉
+    const res = await fetch(API + '/interfaces');
+    const json = await res.json();
+    const list = Array.isArray(json.data) ? json.data : [];
+    const sel = document.getElementById('simIface');
+    sel.innerHTML = '<option value="">-- 请选择接口 --</option>' +
+        list.map(i => '<option value="' + escHtml(i.path) + '">' + escHtml(i.name) + ' (' + escHtml(i.path) + ')</option>').join('');
+
+    // 初始化默认值
+    if (!document.getElementById('simLinkid').value) {
+        document.getElementById('simLinkid').value = buildSimLinkid();
+    }
+    if (!document.getElementById('simBody').value.trim()) {
+        // 尝试从 data/mock.json 加载模板
+        try {
+            const mr = await fetch(API + '/mock');
+            const mj = await mr.json();
+            if (mj.code === 0 && mj.data) {
+                document.getElementById('simBody').value = JSON.stringify(mj.data, null, 2);
+                return;
+            }
+        } catch { /* 无 mock.json 或加载失败，使用内置模板 */ }
+        document.getElementById('simBody').value = DEFAULT_BODY;
+    }
+}
+
+document.getElementById('simSubmit').addEventListener('click', async () => {
+    const ifacePath = document.getElementById('simIface').value;
+    const linkid = document.getElementById('simLinkid').value.trim() || buildSimLinkid();
+    const bodyStr = document.getElementById('simBody').value.trim();
+
+    if (!ifacePath) return toast('请选择接口', 'error');
+    if (!bodyStr) return toast('请输入请求体 JSON', 'error');
+
+    let requestBody;
+    try {
+        requestBody = JSON.parse(bodyStr);
+    } catch (e) {
+        return toast('请求体 JSON 格式错误: ' + e.message, 'error');
+    }
+
+    const btn = document.getElementById('simSubmit');
+    const status = document.getElementById('simStatus');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 提交中...';
+    status.textContent = '';
+    status.className = 'sim-status-bar';
+
+    try {
+        const res = await fetch(API + '/simulate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ interface_path: ifacePath, linkid, request_body: requestBody })
+        });
+        const json = await res.json();
+        if (json.code !== 0) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-play"></i> 提交测试';
+            return toast('提交失败: ' + (json.message || ''), 'error');
+        }
+
+        const taskId = json.task_id;
+        status.textContent = '任务已创建，等待执行... (ID: ' + taskId.slice(0, 8) + '...)';
+        status.className = 'sim-status-bar sim-status-running';
+
+        // 轮询结果
+        for (let i = 0; i < SIM_POLL_MAX; i++) {
+            await new Promise(r => setTimeout(r, SIM_POLL_MS));
+            try {
+                const r2 = await fetch(API + '/tasks/' + encodeURIComponent(taskId));
+                const j2 = await r2.json();
+                const t = j2.data;
+                if (t && t.status !== 'pending' && t.status !== 'processing') {
+                    status.textContent = '';
+                    status.className = 'sim-status-bar';
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-play"></i> 提交测试';
+                    // 展示结果
+                    document.getElementById('taskDetail').innerHTML = taskDetailHtml(t);
+                    document.getElementById('taskModalTitle').innerHTML = '<i class="fas fa-flask"></i> 模拟结果';
+                    document.getElementById('taskModal').classList.add('show');
+                    return;
+                }
+                if (t && t.status === 'processing') {
+                    status.textContent = '执行中...';
+                }
+            } catch { /* 轮询失败继续 */ }
+        }
+
+        // 超时
+        status.textContent = '轮询超时（2 分钟），请在任务日志中查看结果';
+        status.className = 'sim-status-bar sim-status-timeout';
+    } catch (e) {
+        status.textContent = '';
+        status.className = 'sim-status-bar';
+        toast('网络错误: ' + e.message, 'error');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-play"></i> 提交测试';
+});
+
+// Update tab click handler also refresh sim linkid when switching to simulate
+const _origTabHandler = document.querySelector('.cfg-tab[data-tab="simulate"]');
+// (handled inline in the tab click listener above)
 
 // ==== Utilities ====
 function escHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -262,6 +424,14 @@ function statusBadgeClass(s) {
 // Close modal on overlay click
 document.getElementById('ifaceModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
 document.getElementById('taskModal').addEventListener('click', function(e) { if (e.target === this) closeTaskModal(); });
+
+// Close modal on ESC
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        if (document.getElementById('ifaceModal').classList.contains('show')) closeModal();
+        if (document.getElementById('taskModal').classList.contains('show')) closeTaskModal();
+    }
+});
 
 // Init
 loadInterfaces();

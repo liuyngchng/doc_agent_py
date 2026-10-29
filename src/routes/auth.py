@@ -157,6 +157,29 @@ def get_current_user(request: Request) -> dict | None:
     return _get_user_from_cookie(request) or _get_user_from_bearer(request)
 
 
+def build_api_token_dependency(api_token: str):
+    """对外接口鉴权依赖（Authorization: Bearer <api_token>）。
+
+    token 由 cfg.yml 的 sys.api_token 配置，留空则不校验（开发便利）。
+    """
+
+    async def verify(request: Request):
+        if not api_token:
+            return
+        header = request.headers.get("Authorization", "")
+        if header != f"Bearer {api_token}":
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": 1003,
+                    "message": "Unauthorized: 无效或缺失的 Authorization Bearer Token",
+                    "task_id": "",
+                    "linkid": "",
+                },
+            )
+    return verify
+
+
 # ============================================================
 # 路由
 # ============================================================

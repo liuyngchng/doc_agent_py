@@ -1,6 +1,6 @@
 /* ============================================================
-   doc_process_agent 管理后台样式
-   基于 doc_flow_agent 配色方案
+   doc_agent_py 管理后台样式
+   基于 doc_agent_py 配色方案
    ============================================================ */
 * {
     margin: 0;
@@ -626,4 +626,31 @@ header p {
         border-bottom-color: #4b6cb7;
     }
     .cfg-content { padding: 20px 16px; }
+    .sim-layout { flex-direction: column; }
+    .sim-input { flex: auto; width: 100%; }
+}
+
+/* ---- 模拟操作 ---- */
+.sim-input {
+    max-width: 720px;
+}
+
+.sim-input .form-g textarea {
+    min-height: 320px;
+}
+
+.sim-status-bar {
+    display: inline-block;
+    margin-left: 12px;
+    font-size: 0.85rem;
+    color: #888;
+    vertical-align: middle;
+}
+
+.sim-status-running {
+    color: #2a4365;
+}
+
+.sim-status-timeout {
+    color: #975a16;
 }

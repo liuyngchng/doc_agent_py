@@ -4,13 +4,14 @@
 POST /api/v1/{path:path} — 通配路由。
 """
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
 
 from ..config import Config
 from ..logger import get_logger
 from ..store import interfaces_store
 from ..services.task_queue import enqueue, get_running_count, get_pending_count
+from .auth import build_api_token_dependency
 
 log = get_logger()
 
@@ -31,7 +32,11 @@ def create_process_router(cfg: Config) -> APIRouter:
     router = APIRouter()
 
     @router.api_route("/api/v1/{rest_of_path:path}", methods=["POST"])
-    async def process(rest_of_path: str, request: Request):
+    async def process(
+        rest_of_path: str,
+        request: Request,
+        _auth: None = Depends(build_api_token_dependency(cfg.sys.api_token)),
+    ):
         interface_path = rest_of_path
         if not interface_path:
             return JSONResponse(

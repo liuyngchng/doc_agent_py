@@ -20,8 +20,8 @@ from .services.task_queue import init_task_queue
 from .routes.health import router as health_router
 from .routes.auth import router as auth_router
 from .routes.process import create_process_router
-from .routes.tasks import router as tasks_router
-from .routes.admin import router as admin_router
+from .routes.tasks import create_tasks_router
+from .routes.admin import create_admin_router
 
 
 def create_app() -> tuple[FastAPI, Config]:
@@ -55,11 +55,11 @@ def create_app() -> tuple[FastAPI, Config]:
     if (web_dir / "static").exists():
         app.mount("/static", StaticFiles(directory=str(web_dir / "static")), name="static")
 
-    # 对外业务接口
+    # 对外业务接口（外部系统调用，Bearer Token 鉴权）
     app.include_router(create_process_router(cfg))
 
-    # 任务管理 API
-    app.include_router(tasks_router)
+    # 任务管理 API（外部系统调用）
+    app.include_router(create_tasks_router(cfg))
 
     # Dev null
     @app.post("/api/dev/null")
@@ -69,7 +69,7 @@ def create_app() -> tuple[FastAPI, Config]:
         return {"status": "ok"}
 
     # 管理后台 API（需要登录）
-    app.include_router(admin_router)
+    app.include_router(create_admin_router(cfg))
 
     # 管理后台 Web 页面
     @app.get("/admin", include_in_schema=False)

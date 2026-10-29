@@ -1,5 +1,5 @@
 # ============================================================================
-# doc_process_agent 配置模板
+# doc_agent_py 配置模板
 # ============================================================================
 # 复制此文件为 cfg.yml 并根据实际环境修改:
 #   cp cfg.yml.template cfg.yml
@@ -27,9 +27,6 @@ sys:
   # 任务总数上限 (pending + processing)，超过后拒单返回 code=2002
   max_pending_tasks: 10
 
-  # 回调认证 Bearer token（由对方提供，留空则不发送 Authorization 头）
-  callback_url_token: ""
-
   # 回调失败最大重试次数
   callback_retries: 3
 
@@ -44,6 +41,19 @@ sys:
 
   # 文档解析服务地址（自签名 HTTPS），Claude 通过 curl -k 调用提取 PDF/DOCX 文本
   doc_util_url: "https://docutil-server:8080"
+
+  # 文件下载回退 — 重新生成 file_url 的接口地址（留空则禁用此功能）
+  # 当 file_url 直连下载失败时，Agent 会自动调用此接口用 file_id 重新生成下载链接
+  renew_file_url_api: "https://trainxc.oapro.petrochina/sys-manager/api/v1/wps/getDownload"
+
+  # 文件下载 / renew_file_url / 回调对方接口 共用的认证 Bearer Token
+  # （可被环境变量 FILE_URL_TOKEN 覆盖）
+  file_url_token: ""
+
+  # 对外接口鉴权 Token（可被环境变量 API_TOKEN 覆盖）
+  # 对方调用我方 /api/v1/* 时需携带 Authorization: Bearer <api_token>
+  # 留空则不校验（开发便利）
+  api_token: ""
 
 # ---- LLM 适配器配置（必填，指向 Anthropic 协议兼容网关） ----
 # 本服务通过网关调用 LLM，base_url 留空则启动时报错退出。
