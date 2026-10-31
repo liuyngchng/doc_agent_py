@@ -1,5 +1,5 @@
 """
-配置加载 — 对应 TypeScript 版 `config.ts`。
+配置加载 — 支持 YAML 文件 + 环境变量覆盖。
 
 优先级：环境变量 > cfg.yml > 默认值。
 """
@@ -24,6 +24,7 @@ class ServerConfig:
     debug: bool = False
     cert_file: str = ""
     key_file: str = ""
+    self_ip: str = ""   # 对外服务 IP，留空自动探测
 
 
 @dataclass
@@ -33,7 +34,6 @@ class SysConfig:
     callback_retries: int = 3
     callback_retry_interval_sec: int = 2
     retention_days: int = 30
-    model: str = "claude-sonnet-4-20250514"
     data_dir: str = DATA_DIR
     doc_util_url: str = "https://doc_util_server:8443"
     renew_file_url_api: str = ""
@@ -45,7 +45,7 @@ class SysConfig:
 class LlmConfig:
     base_url: str = ""
     auth_token: str = ""
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "deepseek-v4-pro"
     opus_model: str = ""
     sonnet_model: str = ""
     haiku_model: str = ""
@@ -57,10 +57,17 @@ class LlmConfig:
 
 
 @dataclass
+class DocAuditConfig:
+    api_url: str = ""
+    token: str = ""
+
+
+@dataclass
 class Config:
     server: ServerConfig = field(default_factory=ServerConfig)
     sys: SysConfig = field(default_factory=SysConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
+    doc_audit: DocAuditConfig = field(default_factory=DocAuditConfig)
 
 
 def _env(k: str, default: str) -> str:
@@ -107,6 +114,7 @@ def load_config() -> Config:
     s = _cfg.get("server") or {}
     y = _cfg.get("sys") or {}
     l = _cfg.get("llm") or {}
+    da = _cfg.get("doc_audit") or {}
 
     llm_base_url = _env("ANTHROPIC_BASE_URL", l.get("base_url", ""))
     if not llm_base_url:
@@ -124,6 +132,7 @@ def load_config() -> Config:
             debug=_env_bool("DEBUG", s.get("debug", False)),
             cert_file=_env("CERT_FILE", s.get("cert_file", "")),
             key_file=_env("KEY_FILE", s.get("key_file", "")),
+            self_ip=_env("SELF_IP", s.get("self_ip", "")),
         ),
         sys=SysConfig(
             max_concurrent_tasks=_env_int("MAX_CONCURRENT_TASKS", y.get("max_concurrent_tasks", 5)),
@@ -133,7 +142,6 @@ def load_config() -> Config:
                 "CALLBACK_RETRY_INTERVAL_SEC", y.get("callback_retry_interval_sec", 2)
             ),
             retention_days=_env_int("RETENTION_DAYS", y.get("retention_days", 30)),
-            model=_env("MODEL", y.get("model", "claude-sonnet-4-20250514")),
             data_dir=_env("DATA_DIR", y.get("data_dir", DATA_DIR)),
             doc_util_url=_env("DOC_UTIL_URL", y.get("doc_util_url", "https://doc_util_server:8443")),
             renew_file_url_api=_env("RENEW_FILE_URL_API", y.get("renew_file_url_api", "")),
@@ -143,7 +151,7 @@ def load_config() -> Config:
         llm=LlmConfig(
             base_url=llm_base_url,
             auth_token=_env("ANTHROPIC_AUTH_TOKEN", l.get("auth_token", "")),
-            model=_env("ANTHROPIC_MODEL", l.get("model", "claude-sonnet-4-20250514")),
+            model=_env("ANTHROPIC_MODEL", l.get("model", "deepseek-v4-pro")),
             opus_model=_env("ANTHROPIC_DEFAULT_OPUS_MODEL", l.get("opus_model", "")),
             sonnet_model=_env("ANTHROPIC_DEFAULT_SONNET_MODEL", l.get("sonnet_model", "")),
             haiku_model=_env("ANTHROPIC_DEFAULT_HAIKU_MODEL", l.get("haiku_model", "")),
@@ -157,6 +165,10 @@ def load_config() -> Config:
             attribution_header=_env_bool(
                 "CLAUDE_CODE_ATTRIBUTION_HEADER", l.get("attribution_header", False)
             ),
+        ),
+        doc_audit=DocAuditConfig(
+            api_url=_env("DOC_AUDIT_URL", da.get("api_url", "")),
+            token=_env("DOC_AUDIT_TOKEN", da.get("token", "")),
         ),
     )
 

@@ -3,16 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/lib/font-awesome.all.min.css">
     <link rel="stylesheet" href="/static/css/admin.css">
-    <title>dp_agt_py 管理后台 - 登录</title>
+    <title id="pageTitle">dp_agt_py 管理平台 - 登录</title>
 </head>
 <body>
     <div class="login-wrapper">
         <div class="login-card">
             <div class="login-header">
-                <i class="fas fa-cogs"></i>
-                <h1>dp_agt_py 管理后台</h1>
+                <i class="fas fa-robot"></i>
+                <h1 id="sysNameHeader">dp_agt_py 管理平台</h1>
                 <p>请登录以继续</p>
             </div>
 
@@ -45,12 +46,18 @@
             <form id="forcePwdForm">
                 <div class="pwd-field">
                     <label>新密码</label>
-                    <input type="password" id="forceNewPwd" required>
+                    <div class="pwd-input-wrap">
+                        <input type="password" id="forceNewPwd" required>
+                        <i class="fas fa-eye pwd-eye" onclick="togglePwd(this)" title="显示/隐藏"></i>
+                    </div>
                     <div class="pwd-hint">至少 8 位，同时包含字母和数字</div>
                 </div>
                 <div class="pwd-field">
                     <label>确认新密码</label>
-                    <input type="password" id="forceConfirmPwd" required>
+                    <div class="pwd-input-wrap">
+                        <input type="password" id="forceConfirmPwd" required>
+                        <i class="fas fa-eye pwd-eye" onclick="togglePwd(this)" title="显示/隐藏"></i>
+                    </div>
                 </div>
                 <div class="pwd-actions">
                     <button type="submit" class="cfg-btn cfg-btn-save">确认修改</button>
@@ -60,5 +67,17 @@
     </div>
 
     <script src="/static/js/login.js"></script>
+<script>
+(async function() {
+    try {
+        const res = await fetch('/api/info');
+        const json = await res.json();
+        const name = (json.data && json.data.sys_name) || 'dp_agt_py';
+        const title = name + ' 管理平台';
+        document.getElementById('pageTitle').textContent = title + ' - 登录';
+        document.getElementById('sysNameHeader').textContent = title;
+    } catch (_) {}
+})();
+</script>
 </body>
 </html>

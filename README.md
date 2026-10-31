@@ -1,7 +1,7 @@
-# dp_agt_py — 电子公文智能处理 Agent（Python 版）
+# dp_agt_py — 电子公文智能处理 Agent
 
-基于 FastAPI + Claude Agent SDK (Python) 实现，功能涵盖：
-接口模板管理、提示词渲染、异步任务队列、Agent SDK 调用、回调投递与重试、管理后台。
+基于 FastAPI + Claude Agent SDK (Python) 实现的电子公文智能处理网关。
+功能涵盖：接口模板管理、提示词渲染、异步任务队列、Agent SDK 调用、回调投递与重试、管理后台。
 
 ## 功能清单
 
@@ -81,7 +81,7 @@ dp_agt_py/
 │       ├── prompt_engine.py   # 提示词渲染
 │       ├── callback.py        # 回调 + 重试
 │       └── task_queue.py      # 任务队列
-├── web/                       # 管理后台前端（复用 TS 版）
+├── web/                       # 管理后台前端
 ├── data/                      # 运行时数据
 │   ├── cfg.yml.template
 │   ├── app.db

@@ -1,29 +1,38 @@
 """
-管理后台 API — 对应 TypeScript 版 `routes/admin.ts`。
-
-接口 CRUD + 模拟操作 + 任务日志查询。
+管理后台 API — 模板管理、模拟操作、任务监控、日志审查、系统设置、用户管理。
 """
 
+from __future__ import annotations
+
 import json
+import os
+import socket
 from pathlib import Path
+from typing import Any
 
 import uuid6
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Query
+from fastapi.responses import JSONResponse
 
 from ..config import Config
 from ..logger import get_logger
-from ..store import interfaces_store, task_logs_store
-from ..services.prompt_engine import render_prompt
-from ..services.sdk_runner import run_agent
-from ..types import TaskLog, TaskStatus
-from .auth import _require_api_auth, _require_admin
+from ..store import (
+    interfaces_store,
+    task_logs_store,
+    users_store,
+    config_store,
+    hash_password,
+)
+from ..time import now_readable
+from ..types import TaskStatus, StreamEntry
+from .auth import get_current_user, _require_api_auth, _require_admin, _validate_password_strength
+from .process import submit_task
 
 log = get_logger()
 
 
 def _now() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
+    return now_readable()
 
 
 def _safe_parse(s: str | None) -> object:
@@ -35,74 +44,166 @@ def _safe_parse(s: str | None) -> object:
         return s
 
 
+def _extract_title(request_body: str | None) -> str:
+    if not request_body:
+        return "-"
+    try:
+        obj = json.loads(request_body)
+        title = (
+            (obj.get("form_data") or {}).get("title") or
+            (obj.get("form_data") or {}).get("标题") or
+            obj.get("title") or
+            obj.get("标题") or
+            ""
+        )
+        return title or "-"
+    except (json.JSONDecodeError, TypeError):
+        return "-"
+
+
+def _detect_primary_ip() -> str:
+    """探测主要 IP（优先内网地址，其次外网地址）。"""
+    candidates: list[str] = []
+    try:
+        # Get all interface addresses
+        for name in socket.if_nameindex():
+            try:
+                addrs = socket.getaddrinfo(socket.if_indextoname(name.index), None, socket.AF_INET)
+                for addr in addrs:
+                    ip = addr[4][0]
+                    if ip.startswith("127."):
+                        continue
+                    if ip.startswith("172.") or ip.startswith("10.") or ip.startswith("192.168."):
+                        candidates.append(ip)
+                    else:
+                        candidates.insert(0, ip)
+            except OSError:
+                pass
+    except Exception:
+        pass
+    return candidates[0] if candidates else "127.0.0.1"
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _stream_entry_to_dict(e: StreamEntry) -> dict:
+    d: dict = {"ts": e.ts, "type": e.type, "text": e.text}
+    if e.tool_name:
+        d["tool_name"] = e.tool_name
+    if e.tool_input:
+        d["tool_input"] = e.tool_input
+    if e.tool_output:
+        d["tool_output"] = e.tool_output
+    return d
+
+
 def create_admin_router(cfg: Config) -> APIRouter:
     router = APIRouter()
 
-    # ---- 接口管理 ----
+    # ============================================================
+    # 导航信息（所有登录用户可访问）
+    # ============================================================
+
+    @router.get("/admin/nav")
+    async def nav(request: Request):
+        cu = get_current_user(request)
+        is_admin = cu and cu.get("role") == 1
+        tabs: list[dict] = []
+        if is_admin:
+            tabs += [
+                {"id": "interfaces", "icon": "fa-brain", "label": "模板管理"},
+                {"id": "simulate", "icon": "fa-flask", "label": "操作模拟"},
+                {"id": "tasks", "icon": "fa-list-alt", "label": "任务监控"},
+            ]
+        tabs.append({"id": "audit", "icon": "fa-search", "label": "日志审查"})
+        if is_admin:
+            tabs += [
+                {"id": "sys", "icon": "fa-sliders-h", "label": "系统设置"},
+                {"id": "users", "icon": "fa-users", "label": "用户管理"},
+            ]
+        default_tab = "interfaces" if is_admin else "audit"
+        return {"code": 0, "data": {"role": 1 if is_admin else 0, "default_tab": default_tab, "tabs": tabs}}
+
+    @router.get("/admin/server-info")
+    async def server_info():
+        cert_file = cfg.server.cert_file
+        key_file = cfg.server.key_file
+        protocol = "https" if (cert_file and key_file and Path(cert_file).exists() and Path(key_file).exists()) else "http"
+        host = cfg.server.self_ip or _detect_primary_ip()
+        return {"code": 0, "data": {"protocol": protocol, "host": host, "port": cfg.server.port}}
+
+    # ============================================================
+    # 接口管理（需登录）
+    # ============================================================
 
     @router.get("/admin/interfaces")
     async def list_interfaces(request: Request):
         await _require_api_auth(request)
         interfaces = interfaces_store.list()
-        return {"code": 0, "data": [i.__dict__ for i in interfaces]}
+        return {"code": 0, "data": [_iface_to_dict(i) for i in interfaces]}
 
     @router.get("/admin/interfaces/{iface_id}")
     async def get_interface(iface_id: str, request: Request):
         await _require_api_auth(request)
         iface = interfaces_store.get(iface_id)
         if not iface:
-            raise HTTPException(status_code=404, detail={"code": 1001, "message": "接口不存在"})
-        return {"code": 0, "data": iface.__dict__}
+            raise HTTPException(status_code=404, detail={"code": 1001, "message": "访问路径不存在"})
+        return {"code": 0, "data": _iface_to_dict(iface)}
 
     @router.post("/admin/interfaces")
     async def create_interface(request: Request):
         await _require_admin(request)
         body = await request.json()
-        name = body.get("name")
-        path = body.get("path")
-        prompt = body.get("prompt")
+        name = body.get("name", "")
+        path = body.get("path", "")
+        prompt = body.get("prompt", "")
         if not name or not path or not prompt:
             raise HTTPException(status_code=400, detail={"code": 1001, "message": "缺少 name / path / prompt"})
 
         existing = interfaces_store.get_by_path(path)
         if existing:
-            raise HTTPException(status_code=400, detail={"code": 1001, "message": f"接口 path 已存在: {path}"})
+            raise HTTPException(status_code=400, detail={"code": 1001, "message": f"访问路径 path 已存在: {path}"})
 
         created = interfaces_store.create(name, path, prompt)
         log.info("interface_created name=%s path=%s", name, path)
-        return {"code": 0, "data": created.__dict__}
+        return {"code": 0, "data": _iface_to_dict(created)}
 
     @router.put("/admin/interfaces/{iface_id}")
     async def update_interface(iface_id: str, request: Request):
         await _require_admin(request)
         body = await request.json()
-        name = body.get("name")
-        path = body.get("path")
-        prompt = body.get("prompt")
+        name = body.get("name", "")
+        path = body.get("path", "")
+        prompt = body.get("prompt", "")
         if not name or not path or not prompt:
             raise HTTPException(status_code=400, detail={"code": 1001, "message": "缺少 name / path / prompt"})
 
         updated = interfaces_store.update(iface_id, name, path, prompt)
         if not updated:
-            raise HTTPException(status_code=404, detail={"code": 1001, "message": "接口不存在"})
+            raise HTTPException(status_code=404, detail={"code": 1001, "message": "访问路径不存在"})
 
         log.info("interface_updated name=%s path=%s", name, path)
-        return {"code": 0, "data": updated.__dict__}
+        return {"code": 0, "data": _iface_to_dict(updated)}
 
     @router.delete("/admin/interfaces/{iface_id}")
     async def delete_interface(iface_id: str, request: Request):
         await _require_admin(request)
         ok = interfaces_store.remove(iface_id)
         if not ok:
-            raise HTTPException(status_code=404, detail={"code": 1001, "message": "接口不存在"})
+            raise HTTPException(status_code=404, detail={"code": 1001, "message": "访问路径不存在"})
         log.info("interface_deleted id=%s", iface_id)
         return {"code": 0, "message": "已删除"}
 
-    # ---- 模拟操作 ----
+    # ============================================================
+    # 模拟操作
+    # ============================================================
 
     @router.get("/admin/mock")
     async def get_mock(request: Request):
-        """读取 data/mock.json 作为模拟请求体默认值（文件可不存在）。"""
+        """读取 data/mock.json 作为模拟请求体默认值。"""
         await _require_api_auth(request)
         mock_file = Path(cfg.sys.data_dir) / "mock.json"
         if not mock_file.exists():
@@ -121,111 +222,57 @@ def create_admin_router(cfg: Config) -> APIRouter:
     async def simulate(request: Request):
         await _require_api_auth(request)
         body = await request.json()
-        interface_path = body.get("interface_path")
-        req_linkid = body.get("linkid")
-        request_body = body.get("request_body")
+        interface_path = body.get("interface_path", "")
+        request_body = body.get("request_body") or {}
 
-        if not interface_path:
-            raise HTTPException(status_code=400, detail={"code": 1001, "message": "缺少 interface_path"})
+        log.debug("simulate_request_received path=%s body=%s", interface_path, request_body)
 
-        iface = interfaces_store.get_by_path(interface_path)
-        if not iface:
-            raise HTTPException(status_code=404, detail={"code": 1001, "message": f"接口不存在: {interface_path}"})
+        # 对外接口完全一致的逻辑：校验接口、队列上限、入队
+        status_code, resp = submit_task(interface_path, request_body, cfg)
 
-        if not request_body or not isinstance(request_body, dict):
-            raise HTTPException(status_code=400, detail={"code": 1001, "message": "请求体不能为空"})
+        if status_code >= 400:
+            log.warning("simulate_request_rejected path=%s", interface_path)
+        else:
+            log.info(
+                "simulate_task_enqueued task_id=%s linkid=%s path=%s",
+                resp.get("task_id"), resp.get("linkid"), interface_path,
+            )
 
-        task_id = uuid6.uuid7().hex
-        linkid = req_linkid or "sim-" + task_id[:8]
-        now = _now()
+        return JSONResponse(status_code=status_code, content=resp)
 
-        # 持久化 task_log
-        log_entry = TaskLog(
-            task_id=task_id,
-            linkid=linkid,
-            path=iface.path,
-            interface_id=iface.id,
-            status=TaskStatus.pending,
-            request_body=json.dumps(request_body, ensure_ascii=False),
-            prompt="",
-            sdk_output=None,
-            sdk_trace=None,
-            callback_body=None,
-            callback_url="",  # 模拟操作不回调
-            error_message=None,
-            created_at=now,
-            finished_at=None,
-        )
-        task_logs_store.create(log_entry)
-
-        log.info("simulate_task_created task_id=%s linkid=%s path=%s", task_id, linkid, iface.path)
-
-        # 立即返回
-        response = {"code": 0, "message": "任务已创建", "task_id": task_id, "linkid": linkid}
-
-        # 后台异步执行
-        import asyncio
-
-        async def _run_simulation():
-            try:
-                task_logs_store.update_status(task_id, TaskStatus.processing)
-                log.info("simulate_task_processing task_id=%s", task_id)
-
-                rendered = render_prompt(iface.prompt, request_body)
-                task_logs_store.update_result(task_id, {"prompt": rendered})
-
-                result: SdkResult = await run_agent(task_id, rendered, cfg)
-
-                if not result.success:
-                    task_logs_store.update_result(task_id, {
-                        "status": TaskStatus.failed,
-                        "sdk_output": result.raw_output,
-                        "sdk_trace": result.trace,
-                        "error_message": result.error_message or "Claude 处理失败",
-                        "finished_at": _now(),
-                    })
-                    log.error("simulate_task_failed task_id=%s error=%s", task_id, result.error_message)
-                else:
-                    task_logs_store.update_result(task_id, {
-                        "status": TaskStatus.success,
-                        "sdk_output": result.raw_output,
-                        "sdk_trace": result.trace,
-                        "finished_at": _now(),
-                    })
-                    log.info("simulate_task_success task_id=%s output_len=%d", task_id, len(result.raw_output))
-            except Exception as exc:
-                task_logs_store.update_result(task_id, {
-                    "status": TaskStatus.failed,
-                    "error_message": str(exc),
-                    "finished_at": _now(),
-                })
-                log.error("simulate_task_exception task_id=%s error=%s", task_id, exc)
-
-        asyncio.create_task(_run_simulation())
-        return response
-
-    # ---- 任务日志 ----
+    # ============================================================
+    # 任务监控
+    # ============================================================
 
     @router.get("/admin/tasks")
-    async def list_tasks(request: Request, limit: int = 100):
+    async def list_tasks(
+        request: Request,
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=10, ge=1, le=100),
+    ):
         await _require_api_auth(request)
-        limit = min(max(limit, 1), 500)
-        tasks = task_logs_store.list(limit)
+        items, total = task_logs_store.list_paged((page - 1) * page_size, page_size)
         return {
             "code": 0,
-            "data": [
-                {
-                    "task_id": t.task_id,
-                    "linkid": t.linkid,
-                    "path": t.path,
-                    "status": t.status,
-                    "callback_url": t.callback_url,
-                    "error_message": t.error_message,
-                    "created_at": t.created_at,
-                    "finished_at": t.finished_at,
-                }
-                for t in tasks
-            ],
+            "data": {
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "items": [
+                    {
+                        "task_id": t.task_id,
+                        "linkid": t.linkid,
+                        "title": _extract_title(t.request_body),
+                        "path": t.path,
+                        "status": t.status,
+                        "callback_url": t.callback_url,
+                        "error_message": t.error_message,
+                        "created_at": t.created_at,
+                        "finished_at": t.finished_at,
+                    }
+                    for t in items
+                ],
+            },
         }
 
     @router.get("/admin/tasks/{task_id}")
@@ -234,11 +281,220 @@ def create_admin_router(cfg: Config) -> APIRouter:
         task = task_logs_store.get(task_id)
         if not task:
             raise HTTPException(status_code=404, detail={"code": 1001, "message": "任务不存在"})
+        return {
+            "code": 0,
+            "data": {
+                **task.__dict__,
+                "title": _extract_title(task.request_body),
+                "request_body": _safe_parse(task.request_body),
+                "request_response": _safe_parse(task.request_response),
+                "callback_body": _safe_parse(task.callback_body),
+                "callback_response": _safe_parse(task.callback_response),
+                "sdk_trace": _safe_parse(task.sdk_trace),
+                "sdk_stream": _safe_parse(task.sdk_stream),
+            },
+        }
 
-        data = task.__dict__
-        data["request_body"] = _safe_parse(task.request_body)
-        data["callback_body"] = _safe_parse(task.callback_body)
-        data["sdk_trace"] = _safe_parse(task.sdk_trace)
-        return {"code": 0, "data": data}
+    @router.get("/admin/tasks/{task_id}/stream")
+    async def get_task_stream(task_id: str, request: Request):
+        await _require_api_auth(request)
+        task = task_logs_store.get(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail={"code": 1001, "message": "任务不存在"})
+        stream = task_logs_store.get_stream(task_id)
+        return {"code": 0, "data": {"status": task.status, "stream": [_stream_entry_to_dict(e) for e in stream]}}
+
+    # ============================================================
+    # 日志审查（所有登录用户可访问）
+    # ============================================================
+
+    @router.get("/admin/audit")
+    async def audit_list(
+        request: Request,
+        task_id: str = Query(default=""),
+        linkid: str = Query(default=""),
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=10, ge=1, le=100),
+    ):
+        await _require_api_auth(request)
+        tid = task_id.strip()
+        lid = linkid.strip()
+        items, total = task_logs_store.search_paged(tid, lid, (page - 1) * page_size, page_size)
+        return {
+            "code": 0,
+            "data": {
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "items": [
+                    {
+                        "task_id": t.task_id,
+                        "linkid": t.linkid,
+                        "title": _extract_title(t.request_body),
+                        "path": t.path,
+                        "status": t.status,
+                        "created_at": t.created_at,
+                        "finished_at": t.finished_at,
+                    }
+                    for t in items
+                ],
+            },
+        }
+
+    @router.get("/admin/audit/{task_id}")
+    async def audit_detail(task_id: str, request: Request):
+        await _require_api_auth(request)
+        task = task_logs_store.get(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail={"code": 1001, "message": "任务不存在"})
+        return {
+            "code": 0,
+            "data": {
+                "task_id": task.task_id,
+                "linkid": task.linkid,
+                "title": _extract_title(task.request_body),
+                "path": task.path,
+                "status": task.status,
+                "callback_url": task.callback_url,
+                "error_message": task.error_message,
+                "created_at": task.created_at,
+                "finished_at": task.finished_at,
+                "request_body": _safe_parse(task.request_body),
+                "request_response": _safe_parse(task.request_response),
+                "prompt": task.prompt,
+                "sdk_output": task.sdk_output,
+                "sdk_trace": _safe_parse(task.sdk_trace),
+                "sdk_stream": _safe_parse(task.sdk_stream),
+                "callback_body": _safe_parse(task.callback_body),
+                "callback_response": _safe_parse(task.callback_response),
+            },
+        }
+
+    # ============================================================
+    # 系统设置（仅管理员）
+    # ============================================================
+
+    @router.get("/admin/sys-config")
+    async def get_sys_config(request: Request):
+        await _require_admin(request)
+        name = config_store.get("sys.name") or ""
+        api_auth_enabled = config_store.get("api_auth_enabled")
+        api_auth_token = config_store.get("api_auth_token")
+        return {
+            "code": 0,
+            "data": {
+                "sys": {"name": name},
+                "api": {
+                    "auth_enabled": api_auth_enabled == "1",
+                    "auth_token": api_auth_token or "",
+                },
+            },
+        }
+
+    @router.put("/admin/sys-config")
+    async def put_sys_config(request: Request):
+        await _require_admin(request)
+        body = await request.json()
+        sys_cfg = body.get("sys") or {}
+        api_cfg = body.get("api") or {}
+
+        if isinstance(sys_cfg, dict) and sys_cfg.get("name", "").strip():
+            config_store.set("sys.name", sys_cfg["name"].strip(), "系统名称")
+
+        if isinstance(api_cfg, dict):
+            if "auth_enabled" in api_cfg:
+                config_store.set(
+                    "api_auth_enabled",
+                    "1" if api_cfg["auth_enabled"] else "0",
+                    "对外 API 是否启用 X-Api-Key 认证",
+                )
+            if "auth_token" in api_cfg and isinstance(api_cfg["auth_token"], str):
+                config_store.set("api_auth_token", api_cfg["auth_token"], "对外 API 认证 Token")
+
+        cu = get_current_user(request)
+        log.info(
+            "admin_update_sys_config admin=%s sys_name=%s api_auth_enabled=%s",
+            cu.get("uname") if cu else "?",
+            sys_cfg.get("name"),
+            api_cfg.get("auth_enabled"),
+        )
+        return {"code": 0, "message": "保存成功"}
+
+    # ============================================================
+    # 用户管理（仅管理员）
+    # ============================================================
+
+    @router.get("/admin/users")
+    async def list_users(request: Request):
+        await _require_admin(request)
+        users = users_store.list()
+        return {
+            "code": 0,
+            "data": [
+                {
+                    "id": u.id,
+                    "user_name": u.username,
+                    "role": u.role,
+                    "note": u.note,
+                    "created_at": u.created_at,
+                }
+                for u in users
+            ],
+        }
+
+    @router.post("/admin/users")
+    async def create_user(request: Request):
+        await _require_admin(request)
+        body = await request.json()
+        user_name = body.get("user_name", "")
+        user_pwd = body.get("user_pwd", "")
+        role = body.get("role", 0)
+        note = body.get("note", "")
+
+        if not user_name or not user_pwd:
+            raise HTTPException(status_code=400, detail={"code": 1001, "message": "用户名和密码不能为空"})
+
+        strength_err = _validate_password_strength(user_pwd)
+        if strength_err:
+            raise HTTPException(status_code=400, detail={"code": 1001, "message": strength_err})
+
+        if users_store.get(user_name):
+            raise HTTPException(status_code=409, detail={"code": 1001, "message": "用户名已存在"})
+
+        hash = hash_password(user_pwd)
+        ok = users_store.create(user_name, hash, 1 if role == 1 else 0, note or "")
+        if not ok:
+            raise HTTPException(status_code=500, detail={"code": 1001, "message": "创建失败"})
+
+        cu = get_current_user(request)
+        log.info("admin_create_user admin=%s target=%s role=%d", cu.get("uname") if cu else "?", user_name, role)
+        return {"code": 0, "message": "添加成功"}
+
+    @router.delete("/admin/users/{username}")
+    async def delete_user(username: str, request: Request):
+        await _require_admin(request)
+        if username == "admin":
+            raise HTTPException(status_code=400, detail={"code": 1001, "message": "不能删除 admin 用户"})
+
+        ok = users_store.remove(username)
+        if not ok:
+            raise HTTPException(status_code=404, detail={"code": 1001, "message": "用户不存在"})
+
+        cu = get_current_user(request)
+        log.info("admin_delete_user admin=%s target=%s", cu.get("uname") if cu else "?", username)
+        return {"code": 0, "message": "已删除"}
 
     return router
+
+
+def _iface_to_dict(iface: Any) -> dict:
+    return {
+        "id": iface.id,
+        "name": iface.name,
+        "path": iface.path,
+        "prompt": iface.prompt,
+        "created_at": iface.created_at,
+        "updated_at": iface.updated_at,
+        "created_ts": iface.created_ts,
+        "updated_ts": iface.updated_ts,
+    }

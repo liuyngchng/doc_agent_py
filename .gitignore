@@ -24,6 +24,7 @@ data/app.db-wal
 data/cfg.yml
 data/logs/
 data/tasks/
+data/mock.json
 
 # IDE
 .idea/

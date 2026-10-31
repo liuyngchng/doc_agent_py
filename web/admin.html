@@ -3,57 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/lib/font-awesome.all.min.css">
     <link rel="stylesheet" href="/static/css/admin.css">
-    <title>dp_agt_py 管理后台</title>
+    <title id="pageTitle">dp_agt_py 管理平台</title>
 </head>
 <body>
 <div class="container">
     <header>
-        <h1><i class="fas fa-cogs"></i> dp_agt_py 管理后台</h1>
-        <p>接口管理 &middot; 任务日志</p>
+        <h1><i class="fas fa-robot"></i> <span id="sysNameHeader">dp_agt_py 管理平台</span></h1>
+        <p>系统管理 &middot; 运行监控</p>
         <button class="logout-btn" onclick="doLogout()"><i class="fas fa-sign-out-alt"></i> 退出登录</button>
     </header>
 
     <div class="cfg-layout">
-        <nav class="cfg-sidebar">
-            <div class="cfg-tab active" data-tab="interfaces">
-                <i class="fas fa-plug"></i> 接口管理
-            </div>
-            <div class="cfg-tab" data-tab="simulate">
-                <i class="fas fa-flask"></i> 模拟操作
-            </div>
-            <div class="cfg-tab" data-tab="tasks">
-                <i class="fas fa-list-alt"></i> 任务日志
-            </div>
-        </nav>
+        <nav class="cfg-sidebar" id="cfgSidebar"></nav>
 
         <div class="cfg-content">
-            <!-- ========== 接口管理 ========== -->
-            <div class="cfg-section active" id="section-interfaces">
-                <h2><i class="fas fa-plug"></i> 接口管理</h2>
-                <p>每个接口 = 一个对外 path + 一段提示词模板。调用方 POST /api/v1/&lt;path&gt; 时按 path 匹配模板。</p>
+            <!-- ========== 访问路径管理 ========== -->
+            <div class="cfg-section" id="section-interfaces">
+                <h2><i class="fas fa-brain"></i> 模板管理</h2>
+                <p>每个访问路径 = 一个对外 path + 一段提示词模板。调用方 POST /api/v1/&lt;path&gt; 时按 path 匹配模板。</p>
                 <button class="cfg-btn cfg-btn-save" onclick="editInterface()" style="margin-bottom:16px;">
-                    <i class="fas fa-plus"></i> 新建接口
+                    <i class="fas fa-plus"></i> 创建模板
                 </button>
-                <table class="result-table">
-                    <thead><tr><th>名称</th><th>Path</th><th>更新时间</th><th>操作</th></tr></thead>
-                    <tbody id="ifacesTbody"><tr><td colspan="4" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                <div class="table-scroll">
+<table class="result-table">
+                    <thead><tr><th class="col-seq">序号</th><th>功能</th><th>访问路径</th><th>更新时间</th><th>操作</th></tr></thead>
+                    <tbody id="ifacesTbody"><tr><td colspan="5" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
+</div>
 
                 <div id="ifaceModal" class="modal-overlay">
-                    <div class="modal-lg">
-                        <h3 id="ifaceModalTitle"><i class="fas fa-plug"></i> 新建接口</h3>
+                    <div class="modal-lg" style="width:min(1280px, calc(100vw - 40px));">
+                        <h3 id="ifaceModalTitle"><i class="fas fa-brain"></i> 创建模板</h3>
                         <form id="ifaceForm" style="margin-top:20px;">
                             <input type="hidden" id="ifaceId" value="">
                             <div class="form-g">
-                                <label>接口名称 <span style="color:#e53935;">*</span></label>
+                                <label>智能体功能 <span style="color:#e53935;">*</span></label>
                                 <input type="text" id="fName" required placeholder="如：收文分类">
                             </div>
                             <div class="form-g">
-                                <label>Path <span style="color:#e53935;">*</span></label>
+                                <label>访问路径 <span style="color:#e53935;">*</span></label>
                                 <input type="text" id="fPath" required placeholder="如：document/classify">
-                                <div class="field-hint">调用方通过 <code>POST /api/v1/&lt;path&gt;</code> 访问此接口</div>
+                                <div class="field-hint">调用方通过 <code>POST /api/v1/&lt;path&gt;</code> 访问此智能体</div>
                             </div>
                             <div class="form-g">
                                 <label>提示词模板 <span style="color:#e53935;">*</span></label>
@@ -72,22 +65,18 @@
                 </div>
             </div>
 
-            <!-- ========== 模拟操作 ========== -->
+            <!-- ========== 操作模拟 ========== -->
             <div class="cfg-section" id="section-simulate">
-                <h2><i class="fas fa-flask"></i> 模拟操作</h2>
-                <p>选择接口并输入测试数据，提交后自动调用 SDK 并记录结果到任务日志。</p>
+                <h2><i class="fas fa-flask"></i> 操作模拟</h2>
+                <p>选择访问路径并输入测试数据，提交后自动调用 SDK 并记录结果到任务日志。</p>
 
                 <div class="sim-layout">
                     <div class="sim-input">
                         <div class="form-g">
-                            <label>选择接口 <span style="color:#e53935;">*</span></label>
+                            <label>选择访问路径 <span style="color:#e53935;">*</span></label>
                             <select id="simIface" required>
-                                <option value="">-- 请选择接口 --</option>
+                                <option value="">-- 请选择访问路径 --</option>
                             </select>
-                        </div>
-                        <div class="form-g">
-                            <label>LinkID</label>
-                            <input type="text" id="simLinkid" placeholder="留空则自动生成 sim-xxxx">
                         </div>
                         <div class="form-g">
                             <label>请求体 JSON <span style="color:#e53935;">*</span></label>
@@ -97,29 +86,159 @@
                             </div>
                         </div>
                         <button id="simSubmit" class="cfg-btn cfg-btn-save">
-                            <i class="fas fa-play"></i> 提交测试
+                            <i class="fas fa-play"></i> 提交
                         </button>
-                        <span id="simStatus" class="sim-status-bar"></span>
+                        <div id="simResultWrap" style="display:none; margin-top:16px;">
+                            <div class="sim-result-title" style="color:#888;font-size:0.82rem;font-weight:600;margin-bottom:6px;">返回结果</div>
+                            <pre id="simResult" style="background:#2d2d2d; color:#f8f8f2; padding:14px; border-radius:8px; font-size:0.82rem; font-family:'SF Mono','Consolas','Monaco',monospace; max-height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; margin:0;"></pre>
+                            <div class="sim-curl-title" onclick="toggleSimCurl()" style="color:#888;font-size:0.82rem;font-weight:600;margin:12px 0 6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;">
+                                <i class="fas fa-chevron-right" id="simCurlToggle" style="font-size:0.7rem;"></i> 提交的 curl
+                            </div>
+                            <pre id="simCurl" style="display:none; background:#2d2d2d; color:#f8f8f2; padding:14px; border-radius:8px; font-size:0.82rem; font-family:'SF Mono','Consolas','Monaco',monospace; max-height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; margin:0;"></pre>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- ========== 任务日志 ========== -->
+            <!-- ========== 任务监控 ========== -->
             <div class="cfg-section" id="section-tasks">
-                <h2><i class="fas fa-list-alt"></i> 任务日志</h2>
-                <table class="result-table">
-                    <thead><tr><th>Task ID</th><th>LinkID</th><th>Path</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
-                    <tbody id="tasksTbody"><tr><td colspan="6" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                <h2><i class="fas fa-list-alt"></i> 任务监控</h2>
+                <div class="table-scroll">
+<table class="result-table">
+                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">执行过程</th><th class="col-action">执行结果</th></tr></thead>
+                    <tbody id="tasksTbody"><tr><td colspan="8" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
+</div>
+                <div id="tasksPager" class="pager" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:12px;"></div>
 
+                <!-- 执行过程 — 终端风格弹窗 -->
+                <div id="streamModal" class="modal-overlay">
+                    <div class="modal-lg stream-modal-body">
+                        <h3 id="streamModalTitle"><i class="fas fa-terminal"></i> 执行过程</h3>
+                        <div id="streamStatus" class="stream-status-bar"></div>
+                        <pre id="streamMessages" class="stream-terminal"></pre>
+                        <div class="modal-actions">
+                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeStreamModal()">关闭</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 执行结果 — 详情弹窗 -->
                 <div id="taskModal" class="modal-overlay">
                     <div class="modal-lg">
-                        <h3 id="taskModalTitle"><i class="fas fa-search"></i> 任务详情</h3>
+                        <h3 id="taskModalTitle"><i class="fas fa-clipboard-check"></i> 执行结果</h3>
                         <div id="taskDetail" style="margin-top:20px;"></div>
                         <div class="modal-actions">
                             <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeTaskModal()">关闭</button>
                         </div>
                     </div>
+                </div>
+            </div>
+
+                <!-- ========== 日志审查 ========== -->
+                <div class="cfg-section" id="section-audit">
+                    <h2><i class="fas fa-search"></i> 日志审查</h2>
+                    <p style="color:#888;margin-bottom:16px;">按 Task ID 或 Link ID 查询智能体完整工作过程。</p>
+
+                    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:flex-end;">
+                        <div class="form-g" style="margin-bottom:0;flex:1;min-width:220px;">
+                            <label>Task ID</label>
+                            <input type="text" id="auditTaskId" placeholder="输入 Task ID" style="width:100%;">
+                        </div>
+                        <div class="form-g" style="margin-bottom:0;flex:1;min-width:220px;">
+                            <label>Link ID</label>
+                            <input type="text" id="auditLinkId" placeholder="输入 Link ID" style="width:100%;">
+                        </div>
+                        <button class="cfg-btn cfg-btn-save" onclick="loadAudit(1)" style="flex-shrink:0;">
+                            <i class="fas fa-search"></i> 查询
+                        </button>
+                        <button class="cfg-btn cfg-btn-reset" onclick="loadAudit(0)" style="flex-shrink:0;">
+                            <i class="fas fa-redo"></i> 最近 10 条
+                        </button>
+                    </div>
+
+                    <div class="table-scroll">
+<table class="result-table">
+                        <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">详情</th></tr></thead>
+                        <tbody id="auditTbody"><tr><td colspan="7" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                    </table>
+</div>
+                    <div id="auditPager" class="pager" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:12px;"></div>
+
+                    <!-- 时间线详情弹窗 -->
+                    <div id="auditDetailModal" class="modal-overlay">
+                        <div class="modal-lg" style="width:min(1280px, calc(100vw - 40px));display:flex;flex-direction:column;">
+                            <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                                <span><i class="fas fa-history"></i> 任务时间线</span>
+                                <button type="button" class="cfg-btn cfg-btn-primary" onclick="exportAuditMd()" style="margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
+                                <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeAuditDetail()"><i class="fas fa-times"></i> 关闭</button>
+                            </h3>
+                            <div id="auditDetailContent" style="margin-top:20px;flex:1;min-height:0;display:flex;flex-direction:column;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== 系统设置 ========== -->
+                <div class="cfg-section" id="section-sys">
+                    <h2><i class="fas fa-sliders-h"></i> 系统设置</h2>
+                    <div class="form-g">
+                        <label>系统名称</label>
+                        <input type="text" id="sysName" style="max-width:400px;">
+                    </div>
+
+                    <h3 style="margin-top:24px;border-top:1px solid #e0e3e8;padding-top:20px;">对外 API 认证</h3>
+                    <p style="color:#888;margin-bottom:12px;font-size:0.85rem;">
+                        启用后调用 <code>POST /api/v1/{path}</code> 必须携带 <code>X-Api-Key: &lt;token&gt;</code> 头。
+                    </p>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="apiAuthEnabled" onchange="document.getElementById('apiTokenRow').style.display=this.checked?'flex':''"> 启用 API 认证
+                        </label>
+                    </div>
+                    <div id="apiTokenRow" style="display:flex;gap:8px;align-items:center;max-width:520px;">
+                        <div class="form-g" style="flex:1;margin-bottom:0;position:relative;">
+                            <label>Token</label>
+                            <input type="password" id="apiAuthToken" placeholder="设置认证 token" style="width:100%;font-family:monospace;padding-right:36px;">
+                            <i class="fas fa-eye" onclick="toggleTokenVisibility()" style="position:absolute;right:10px;bottom:12px;cursor:pointer;color:#999;font-size:0.9rem;" title="显示/隐藏"></i>
+                        </div>
+                        <button type="button" class="cfg-btn cfg-btn-reset" onclick="generateAPIToken()" style="margin-top:20px;white-space:nowrap;">
+                            <i class="fas fa-sync-alt"></i> 随机生成
+                        </button>
+                    </div>
+                    <button class="cfg-btn cfg-btn-save" onclick="saveSysConfig()" style="margin-top:16px;">
+                        <i class="fas fa-check"></i> 保存
+                    </button>
+                </div>
+
+                <!-- ========== 用户管理 ========== -->
+                <div class="cfg-section" id="section-users">
+                    <h2><i class="fas fa-users"></i> 用户管理</h2>
+                    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:flex-end;">
+                        <div class="form-g" style="margin-bottom:0;flex:1;min-width:140px;">
+                            <label>用户名</label>
+                            <input type="text" id="newUserName" placeholder="用户名" style="max-width:200px;">
+                        </div>
+                        <div class="form-g" style="margin-bottom:0;flex:1;min-width:140px;">
+                            <label>密码</label>
+                            <input type="password" id="newUserPwd" placeholder="密码" style="max-width:200px;">
+                        </div>
+                        <div class="form-g" style="margin-bottom:0;">
+                            <label>角色</label>
+                            <select id="newUserRole" style="max-width:150px;padding:10px 14px;border:2px solid #e0e3e8;border-radius:8px;font-size:0.9rem;">
+                                <option value="0">普通用户</option>
+                                <option value="1">管理员</option>
+                            </select>
+                        </div>
+                        <button class="cfg-btn cfg-btn-save" onclick="addUser()">
+                            <i class="fas fa-plus"></i> 添加用户
+                        </button>
+                    </div>
+                    <div class="table-scroll">
+<table class="result-table">
+                        <thead><tr><th class="col-seq">序号</th><th>用户名</th><th>角色</th><th>备注</th><th>操作</th></tr></thead>
+                        <tbody id="usersTbody"><tr><td colspan="5" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                    </table>
+</div>
                 </div>
             </div>
         </div>
@@ -131,19 +250,88 @@
 <script>
 const API = '/admin';
 
-// ==== Sidebar tabs ====
-document.querySelectorAll('.cfg-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-        document.querySelectorAll('.cfg-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        document.querySelectorAll('.cfg-section').forEach(s => s.classList.remove('active'));
-        const section = document.getElementById('section-' + tab.dataset.tab);
-        if (section) section.classList.add('active');
-        if (tab.dataset.tab === 'interfaces') loadInterfaces();
-        else if (tab.dataset.tab === 'simulate') loadSimulateTab();
-        else if (tab.dataset.tab === 'tasks') loadTasks();
-    });
-});
+// ============================================================
+// 全局 fetch 包装：统一处理 401 未登录 → 跳转登录页
+// ============================================================
+const _nativeFetch = window.fetch.bind(window);
+window.fetch = async function(...args) {
+    try {
+        const resp = await _nativeFetch(...args);
+        if (resp.status === 401) {
+            redirectToLogin();
+            throw new Error('未登录或登录已过期');
+        }
+        return resp;
+    } catch (err) {
+        // 网络错误也走这里，但登录页本身除外
+        if (err && err.message === '未登录或登录已过期') throw err;
+        throw err;
+    }
+};
+
+let _loginRedirecting = false;
+function redirectToLogin() {
+    if (_loginRedirecting) return;
+    _loginRedirecting = true;
+    window.location.href = '/login';
+}
+
+// ============================================================
+// 闲置超时自动登出（默认 30 分钟无操作）
+// ============================================================
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+let _idleTimer = null;
+function resetIdleTimer() {
+    if (_idleTimer) clearTimeout(_idleTimer);
+    _idleTimer = setTimeout(() => {
+        doLogout();
+    }, IDLE_TIMEOUT_MS);
+}
+['click', 'keydown', 'mousemove', 'scroll', 'touchstart'].forEach(evt =>
+    document.addEventListener(evt, resetIdleTimer, { passive: true })
+);
+resetIdleTimer();
+
+// ==== 根据后端 nav 渲染侧边栏 + 绑定事件 ====
+async function initNav() {
+    try {
+        const res = await fetch(API + '/nav');
+        const json = await res.json();
+        const tabs = json.data?.tabs || [];
+        const defaultTab = json.data?.default_tab || 'audit';
+
+        const sidebar = document.getElementById('cfgSidebar');
+        sidebar.innerHTML = tabs.map(t =>
+            `<div class="cfg-tab" data-tab="${t.id}">
+                <i class="fas ${t.icon}"></i> ${t.label}
+            </div>`
+        ).join('');
+
+        // 绑定 tab 点击
+        sidebar.querySelectorAll('.cfg-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                sidebar.querySelectorAll('.cfg-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                document.querySelectorAll('.cfg-section').forEach(s => s.classList.remove('active'));
+                const section = document.getElementById('section-' + tab.dataset.tab);
+                if (section) section.classList.add('active');
+                if (tab.dataset.tab === 'interfaces') loadInterfaces();
+                else if (tab.dataset.tab === 'simulate') loadSimulateTab();
+                else if (tab.dataset.tab === 'tasks') loadTasks();
+                else if (tab.dataset.tab === 'sys') loadSysConfig();
+                else if (tab.dataset.tab === 'users') loadUsers();
+                else if (tab.dataset.tab === 'audit') loadAudit(0);
+            });
+        });
+
+        // 激活默认 tab
+        const defaultEl = sidebar.querySelector('[data-tab="' + defaultTab + '"]');
+        if (defaultEl) defaultEl.click();
+    } catch (_) {}
+}
+
+// backward compat: old querySelectorAll removed, replaced by initNav above
+// stub kept for manual window.onload — called at bottom
 
 // ==== Toast ====
 function toast(msg, type) {
@@ -165,15 +353,16 @@ async function loadInterfaces() {
     const list = Array.isArray(json.data) ? json.data : [];
     const tbody = document.getElementById('ifacesTbody');
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:24px;">暂无接口，点击"新建接口"开始</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:24px;">暂无提示词，点击"创建模板"开始</td></tr>';
         return;
     }
-    tbody.innerHTML = list.map(i => {
+    tbody.innerHTML = list.map((i, idx) => {
         const id = JSON.stringify(i.id);
         const name = escHtml(i.name);
         const path = escHtml(i.path);
         const ts = fmtTs(i.updated_at);
         return `<tr>
+            <td class="col-seq">${idx + 1}</td>
             <td>${name}</td>
             <td><span class="path-mono">${path}</span></td>
             <td>${ts}</td>
@@ -191,7 +380,7 @@ function editInterface(existing) {
     document.getElementById('fName').value = isNew ? '' : existing.name;
     document.getElementById('fPath').value = isNew ? '' : existing.path;
     document.getElementById('fPrompt').value = isNew ? '' : existing.prompt;
-    document.getElementById('ifaceModalTitle').innerHTML = '<i class="fas fa-plug"></i> ' + (isNew ? '新建接口' : '编辑接口');
+    document.getElementById('ifaceModalTitle').innerHTML = '<i class="fas fa-brain"></i> ' + (isNew ? '创建模板' : '编辑提示词');
     document.getElementById('ifaceModal').classList.add('show');
 }
 
@@ -209,7 +398,7 @@ document.getElementById('ifaceForm').addEventListener('submit', async (e) => {
     const body = await res.json();
     if (body.code !== 0) return toast('保存失败: ' + (body.message || ''), 'error');
     closeModal();
-    toast(id ? '接口已更新' : '接口已创建');
+    toast(id ? '访问路径已更新' : '访问路径已创建');
     loadInterfaces();
 });
 
@@ -220,27 +409,56 @@ async function deleteInterface(id, name) {
     else toast('删除失败', 'error');
 }
 
-// ==== Tasks ====
-async function loadTasks() {
-    const res = await fetch(API + '/tasks?limit=100');
+// ==== Tasks (server-side pagination) ====
+const TASKS_PAGE_SIZE = 10;
+let _tasksPage = 1;
+let _tasksTotal = 0;
+
+async function loadTasks(page = 1) {
+    _tasksPage = page;
+    const res = await fetch(API + '/tasks?page=' + page + '&page_size=' + TASKS_PAGE_SIZE);
     const json = await res.json();
-    const list = Array.isArray(json.data) ? json.data : [];
+    const data = json.data || {};
+    const list = Array.isArray(data.items) ? data.items : [];
+    _tasksTotal = data.total || 0;
+    renderTasksPage(list);
+}
+
+function renderTasksPage(list) {
+    const total = _tasksTotal;
+    const totalPages = Math.max(1, Math.ceil(total / TASKS_PAGE_SIZE));
     const tbody = document.getElementById('tasksTbody');
-    if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">暂无任务</td></tr>';
+    if (total === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:24px;">暂无任务</td></tr>';
+        document.getElementById('tasksPager').innerHTML = '';
         return;
     }
-    tbody.innerHTML = list.map(t => {
+    const start = (_tasksPage - 1) * TASKS_PAGE_SIZE;
+    tbody.innerHTML = list.map((t, i) => {
+        const no = start + i + 1;
+        const rid = 'trow-' + no;
         const taskId = escHtml(t.task_id);
-        return `<tr>
-            <td style="font-family:monospace;font-size:0.8rem;">${taskId.substring(0, 18)}...</td>
-            <td>${escHtml(t.linkid || '-')}</td>
+        const title = t.title || '-';
+        const titleDisplay = title.length > 20 ? escHtml(title.substring(0, 20)) + '...' : escHtml(title);
+        return `<tr class="main-row">
+            <td class="col-seq">${no}</td>
+            <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
             <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
-            <td><span class="badge badge-${statusBadgeClass(t.status)}">${t.status}</span></td>
-            <td>${fmtTs(t.created_at)}</td>
-            <td><button class="cfg-btn-sm" onclick="viewTask('${taskId}')"><i class="fas fa-search"></i> 详情</button></td>
+            <td>${statusText(t.status)}</td>
+            <td class="col-date">${fmtTs(t.created_at)}</td>
+            <td class="col-date">${fmtTs(t.finished_at)}</td>
+            <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewStream('${taskId}')" title="执行过程"><i class="fas fa-comments"></i></button></td>
+            <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewTask('${taskId}')" title="执行结果"><i class="fas fa-clipboard-check"></i></button></td>
+        </tr>
+        <tr class="row-detail" id="${rid}" style="display:none;">
+            <td colspan="8" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
+                <span class="audit-info-label">Task ID:</span> <code style="font-size:0.82rem;">${taskId}</code>
+                &nbsp;&nbsp;&nbsp;
+                <span class="audit-info-label">LinkID:</span> <code style="font-size:0.82rem;">${escHtml(t.linkid || '-')}</code>
+            </td>
         </tr>`;
     }).join('');
+    document.getElementById('tasksPager').innerHTML = pagerHtml(_tasksPage, totalPages, 'loadTasks');
 }
 
 async function viewTask(taskId) {
@@ -250,38 +468,150 @@ async function viewTask(taskId) {
     if (!t) return toast('未找到', 'error');
 
     document.getElementById('taskDetail').innerHTML = taskDetailHtml(t);
-    document.getElementById('taskModalTitle').innerHTML = '<i class="fas fa-search"></i> 任务详情';
+    document.getElementById('taskModalTitle').innerHTML = '<i class="fas fa-clipboard-check"></i> 执行结果';
     document.getElementById('taskModal').classList.add('show');
 }
 
 function taskDetailHtml(t) {
+    let step = 0;
     return `
         <table class="kv-table">
+            <tr><td class="kv-key">标题</td><td>${escHtml(t.title || '-')}</td></tr>
             <tr><td class="kv-key">Task ID</td><td style="font-family:monospace;">${escHtml(t.task_id)}</td></tr>
             <tr><td class="kv-key">LinkID</td><td>${escHtml(t.linkid || '-')}</td></tr>
-            <tr><td class="kv-key">Path</td><td><span class="path-mono">${escHtml(t.path || '-')}</span></td></tr>
-            <tr><td class="kv-key">状态</td><td><span class="badge badge-${statusBadgeClass(t.status)}">${t.status}</span></td></tr>
+            <tr><td class="kv-key">访问路径</td><td><span class="path-mono">${escHtml(t.path || '-')}</span></td></tr>
+            <tr><td class="kv-key">状态</td><td>${statusText(t.status)}</td></tr>
             <tr><td class="kv-key">创建时间</td><td>${fmtTs(t.created_at)}</td></tr>
             <tr><td class="kv-key">完成时间</td><td>${fmtTs(t.finished_at)}</td></tr>
             <tr><td class="kv-key">错误信息</td><td>${escHtml(t.error_message || '(无)')}</td></tr>
         </table>
-        <div class="kv-section"><i class="fas fa-arrow-right"></i> 请求体</div>
-        <div class="task-detail-json">${escHtml(jsonFmt(t.request_body))}</div>
-        <div class="kv-section"><i class="fas fa-arrow-right"></i> 提示词</div>
-        <div class="task-detail-json">${escHtml(t.prompt || '(未记录)')}</div>
-        <div class="kv-section"><i class="fas fa-arrow-right"></i> Agent 输出</div>
-        <div class="task-detail-json">${escHtml(t.sdk_output || '(未记录)')}</div>
-        <div class="kv-section"><i class="fas fa-arrow-right"></i> SDK 调用追踪</div>
-        <div class="task-detail-json">${escHtml(jsonFmt(t.sdk_trace))}</div>
-        <div class="kv-section"><i class="fas fa-arrow-right"></i> 回调体</div>
-        <div class="task-detail-json">${escHtml(jsonFmt(t.callback_body))}</div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 请求体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.request_body))}</div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> 第${++step}步 请求体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.request_response))}</div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 提示词 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="task-detail-json" style="display:none;">${escHtml(t.prompt || '(未记录)')}</div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 Agent 输出 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="task-detail-json" style="display:none;">${escHtml(t.sdk_output || '(未记录)')}</div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 SDK 调用追踪 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.sdk_trace))}</div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 回调体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.callback_body))}</div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> 第${++step}步 回调体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.callback_response))}</div>
     `;
 }
 
-// ==== Simulate ====
-const SIM_POLL_MAX = 120;
-const SIM_POLL_MS = 1000;
+// ==============================
+// 实时执行过程 — 对话风格
+// ==============================
+let _streamPollTimer = null;
+let _streamTaskId = null;
+let _streamCount = 0;           // 已渲染的消息条数，用于增量追加
 
+function closeStreamModal() {
+    clearInterval(_streamPollTimer);
+    _streamPollTimer = null;
+    _streamTaskId = null;
+    _streamCount = 0;
+    document.getElementById('streamModal').classList.remove('show');
+}
+
+async function viewStream(taskId) {
+    _streamTaskId = taskId;
+    _streamCount = 0;
+    document.getElementById('streamMessages').textContent = '加载中...';
+    document.getElementById('streamStatus').innerHTML = '';
+    document.getElementById('streamStatus').className = 'stream-status-bar';
+    document.getElementById('streamModalTitle').innerHTML = '<i class="fas fa-terminal"></i> 执行过程 <span style="font-weight:400;font-size:0.8rem;color:#888;">' + escHtml(taskId.slice(0,8)) + '...</span>';
+    document.getElementById('streamModal').classList.add('show');
+
+    await pollStream();
+
+    // 如果任务还在跑，开始轮询
+    clearInterval(_streamPollTimer);
+    _streamPollTimer = setInterval(pollStream, 1500);
+}
+
+async function pollStream() {
+    if (!_streamTaskId) return;
+    try {
+        const res = await fetch(API + '/tasks/' + encodeURIComponent(_streamTaskId) + '/stream');
+        const json = await res.json();
+        if (!json.data) return;
+
+        const { status, stream } = json.data;
+        const entries = Array.isArray(stream) ? stream : [];
+
+        // 增量渲染：仅追加 _streamCount 之后的新条目
+        if (entries.length > _streamCount) {
+            const newEntries = entries.slice(_streamCount);
+            appendStreamEntries(newEntries);
+            _streamCount = entries.length;
+        }
+
+        // 更新状态栏
+        const statusEl = document.getElementById('streamStatus');
+        if (status === 'processing') {
+            statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 执行中...';
+            statusEl.className = 'stream-status-bar stream-status-live';
+        } else if (status === 'completed') {
+            statusEl.innerHTML = '<i class="fas fa-check-circle"></i> 执行完成';
+            statusEl.className = 'stream-status-bar stream-status-done';
+            clearInterval(_streamPollTimer);
+            _streamPollTimer = null;
+        } else if (status === 'failed' || status === 'callback_fail') {
+            statusEl.innerHTML = '<i class="fas fa-times-circle"></i> 执行失败';
+            statusEl.className = 'stream-status-bar stream-status-done';
+            clearInterval(_streamPollTimer);
+            _streamPollTimer = null;
+        }
+    } catch (e) {
+        // 静默重试
+    }
+}
+
+function appendStreamEntries(entries) {
+    const container = document.getElementById('streamMessages');
+    // 首次追加时清空 loading 占位
+    if (_streamCount === 0) container.textContent = '';
+
+    for (const entry of entries) {
+        const ts = entry.ts ? '[' + entry.ts + '] ' : '';
+        let line = '';
+
+        switch (entry.type) {
+            case 'text':
+                line = ts + entry.text;
+                break;
+            case 'tool':
+                line = ts + 'TOOL ' + (entry.tool_name || '') + ': ' + entry.text
+                    + (entry.tool_input ? '\n' + entry.tool_input : '');
+                break;
+            case 'tool_result':
+                line = ts + 'RESULT: ' + entry.text;
+                if (entry.tool_output) line += '\n' + entry.tool_output;
+                break;
+            case 'system':
+                line = ts + entry.text;
+                if (entry.tool_input) line += '\n' + entry.tool_input;
+                break;
+            case 'error':
+                line = ts + 'ERROR: ' + entry.text;
+                if (entry.tool_output) line += '\n' + entry.tool_output;
+                break;
+            default:
+                line = ts + (entry.text || '');
+        }
+
+        container.textContent += line + '\n';
+    }
+
+    // 自动滚到底部
+    container.scrollTop = container.scrollHeight;
+}
+
+// ==== Simulate ====
 const DEFAULT_BODY = `{
   "linkid": "sim-xxx",
   "callback_url": "",
@@ -294,25 +624,15 @@ const DEFAULT_BODY = `{
   }
 }`;
 
-function buildSimLinkid() {
-    return 'sim-' + Math.random().toString(16).slice(2, 10);
-}
-
 async function loadSimulateTab() {
-    // 加载接口下拉
     const res = await fetch(API + '/interfaces');
     const json = await res.json();
     const list = Array.isArray(json.data) ? json.data : [];
     const sel = document.getElementById('simIface');
-    sel.innerHTML = '<option value="">-- 请选择接口 --</option>' +
+    sel.innerHTML = '<option value="">-- 请选择访问路径 --</option>' +
         list.map(i => '<option value="' + escHtml(i.path) + '">' + escHtml(i.name) + ' (' + escHtml(i.path) + ')</option>').join('');
 
-    // 初始化默认值
-    if (!document.getElementById('simLinkid').value) {
-        document.getElementById('simLinkid').value = buildSimLinkid();
-    }
     if (!document.getElementById('simBody').value.trim()) {
-        // 尝试从 data/mock.json 加载模板
         try {
             const mr = await fetch(API + '/mock');
             const mj = await mr.json();
@@ -320,17 +640,16 @@ async function loadSimulateTab() {
                 document.getElementById('simBody').value = JSON.stringify(mj.data, null, 2);
                 return;
             }
-        } catch { /* 无 mock.json 或加载失败，使用内置模板 */ }
+        } catch { /* ignore */ }
         document.getElementById('simBody').value = DEFAULT_BODY;
     }
 }
 
 document.getElementById('simSubmit').addEventListener('click', async () => {
     const ifacePath = document.getElementById('simIface').value;
-    const linkid = document.getElementById('simLinkid').value.trim() || buildSimLinkid();
     const bodyStr = document.getElementById('simBody').value.trim();
 
-    if (!ifacePath) return toast('请选择接口', 'error');
+    if (!ifacePath) return toast('请选择访问路径', 'error');
     if (!bodyStr) return toast('请输入请求体 JSON', 'error');
 
     let requestBody;
@@ -341,104 +660,472 @@ document.getElementById('simSubmit').addEventListener('click', async () => {
     }
 
     const btn = document.getElementById('simSubmit');
-    const status = document.getElementById('simStatus');
+    const wrap = document.getElementById('simResultWrap');
+    const resultPre = document.getElementById('simResult');
+    const curlPre = document.getElementById('simCurl');
+    const curlToggle = document.getElementById('simCurlToggle');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 提交中...';
-    status.textContent = '';
-    status.className = 'sim-status-bar';
+    wrap.style.display = 'none';
+
+    // 从后端获取真实的服务器地址（协议/IP/端口）
+    let proto = window.location.protocol;
+    let host = window.location.hostname;
+    let port = window.location.port || (proto === 'https:' ? '443' : '80');
+    try {
+        const siRes = await fetch(API + '/server-info');
+        const siJson = await siRes.json();
+        if (siJson.data) {
+            proto = siJson.data.protocol + ':';
+            host = siJson.data.host;
+            port = String(siJson.data.port);
+        }
+    } catch { /* fallback to window.location */ }
+
+    // 生成等效 curl 命令
+    const apiPath = '/api/v1/' + ifacePath;
+    const needPort = (proto === 'https:' && port !== '443') || (proto === 'http:' && port !== '80');
+    const apiUrl = proto + '//' + host + (needPort ? ':' + port : '') + apiPath;
+    const bodyJson = JSON.stringify(requestBody);
+    const curlCmd = `curl -k --noproxy '*' \\
+  -H 'Content-Type: application/json' \\
+  -H 'Authorization: Bearer sk-***' \\
+  -d '${bodyJson.replace(/'/g, "'\\''")}' \\
+  ${apiUrl}`;
+
+    curlPre.textContent = curlCmd;
+    curlPre.style.display = 'none';
+    curlToggle.className = 'fas fa-chevron-right';
 
     try {
         const res = await fetch(API + '/simulate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ interface_path: ifacePath, linkid, request_body: requestBody })
+            body: JSON.stringify({ interface_path: ifacePath, request_body: requestBody })
         });
         const json = await res.json();
-        if (json.code !== 0) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-play"></i> 提交测试';
-            return toast('提交失败: ' + (json.message || ''), 'error');
-        }
-
-        const taskId = json.task_id;
-        status.textContent = '任务已创建，等待执行... (ID: ' + taskId.slice(0, 8) + '...)';
-        status.className = 'sim-status-bar sim-status-running';
-
-        // 轮询结果
-        for (let i = 0; i < SIM_POLL_MAX; i++) {
-            await new Promise(r => setTimeout(r, SIM_POLL_MS));
-            try {
-                const r2 = await fetch(API + '/tasks/' + encodeURIComponent(taskId));
-                const j2 = await r2.json();
-                const t = j2.data;
-                if (t && t.status !== 'pending' && t.status !== 'processing') {
-                    status.textContent = '';
-                    status.className = 'sim-status-bar';
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fas fa-play"></i> 提交测试';
-                    // 展示结果
-                    document.getElementById('taskDetail').innerHTML = taskDetailHtml(t);
-                    document.getElementById('taskModalTitle').innerHTML = '<i class="fas fa-flask"></i> 模拟结果';
-                    document.getElementById('taskModal').classList.add('show');
-                    return;
-                }
-                if (t && t.status === 'processing') {
-                    status.textContent = '执行中...';
-                }
-            } catch { /* 轮询失败继续 */ }
-        }
-
-        // 超时
-        status.textContent = '轮询超时（2 分钟），请在任务日志中查看结果';
-        status.className = 'sim-status-bar sim-status-timeout';
+        resultPre.textContent = JSON.stringify(json, null, 2);
     } catch (e) {
-        status.textContent = '';
-        status.className = 'sim-status-bar';
-        toast('网络错误: ' + e.message, 'error');
+        resultPre.textContent = '网络错误: ' + e.message;
     }
+    wrap.style.display = 'block';
     btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-play"></i> 提交测试';
+    btn.innerHTML = '<i class="fas fa-play"></i> 提交';
 });
-
-// Update tab click handler also refresh sim linkid when switching to simulate
-const _origTabHandler = document.querySelector('.cfg-tab[data-tab="simulate"]');
-// (handled inline in the tab click listener above)
 
 // ==== Utilities ====
 function escHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function fmtTs(s) { if (!s) return '-'; try { return new Date(s).toLocaleString('zh-CN'); } catch { return s; } }
+function fmtTs(s) { if (!s) return '-'; /* 数据库 created_at / finished_at 为 ISO，格式化为秒 */ try { const d = new Date(s); if (isNaN(d.getTime())) return s; const p = (n) => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); } catch { return s; } }
+/** 时间线用：保留毫秒。已格式化的时间直接返回，否则从 ISO 转换 */
+function fmtTimelineTs(s) { if (!s) return ''; if (/^\d{2}:\d{2}:\d{2}/.test(s)) return s; /* 旧 HH:MM:ss.SSS */ if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s)) return s; /* 已是 YYYY-MM-DD HH:MM:ss(.SSS) */ try { const d = new Date(s); if (isNaN(d.getTime())) return s; const p = (n) => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' + String(d.getMilliseconds()).padStart(3,'0'); } catch { return s; } }
 function jsonFmt(v) { if (typeof v === 'string') try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; } return JSON.stringify(v, null, 2); }
-function statusBadgeClass(s) {
-    switch (s) {
-        case 'pending': return 'pending';
-        case 'processing': return 'processing';
-        case 'success':
-        case 'completed': return 'completed';
-        case 'failed':
-        case 'callback_fail': return 'failed';
-        case 'cancelled': return 'cancelled';
-        default: return 'processing';
-    }
+function statusText(s) {
+    const map = {
+        pending: '排队中',
+        processing: '处理中',
+        failed: '失败',
+        completed: '已完成',
+        callback_fail: '回调失败',
+        cancelled: '已取消',
+    };
+    return map[s] || s || '-';
 }
 
 // Close modal on overlay click
 document.getElementById('ifaceModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
 document.getElementById('taskModal').addEventListener('click', function(e) { if (e.target === this) closeTaskModal(); });
+document.getElementById('streamModal').addEventListener('click', function(e) { if (e.target === this) closeStreamModal(); });
 
 // Close modal on ESC
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         if (document.getElementById('ifaceModal').classList.contains('show')) closeModal();
         if (document.getElementById('taskModal').classList.contains('show')) closeTaskModal();
+        if (document.getElementById('streamModal').classList.contains('show')) closeStreamModal();
+        if (document.getElementById('auditDetailModal').classList.contains('show')) closeAuditDetail();
     }
 });
 
+document.getElementById('auditDetailModal').addEventListener('click', function(e) { if (e.target === this) closeAuditDetail(); });
+
 // Init
-loadInterfaces();
+initNav();
+loadSysConfig();
+
+function toggleTimelineDetail(header) {
+    const detail = header.nextElementSibling;
+    if (detail && detail.classList.contains('timeline-detail')) {
+        const toggle = header.querySelector('.timeline-toggle');
+        if (detail.style.display === 'none') {
+            detail.style.display = '';
+            toggle.className = 'fas fa-chevron-down timeline-toggle';
+        } else {
+            detail.style.display = 'none';
+            toggle.className = 'fas fa-chevron-right timeline-toggle';
+        }
+    }
+}
+
+function toggleTaskDetail(section) {
+    const detail = section.nextElementSibling;
+    if (detail && detail.classList.contains('task-detail-json')) {
+        const toggle = section.querySelector('.task-detail-toggle');
+        if (detail.style.display === 'none') {
+            detail.style.display = '';
+            if (toggle) toggle.className = 'fas fa-chevron-down task-detail-toggle';
+        } else {
+            detail.style.display = 'none';
+            if (toggle) toggle.className = 'fas fa-chevron-right task-detail-toggle';
+        }
+    }
+}
+
+function toggleSimCurl() {
+    const curl = document.getElementById('simCurl');
+    const toggle = document.getElementById('simCurlToggle');
+    if (curl.style.display === 'none') {
+        curl.style.display = '';
+        toggle.className = 'fas fa-chevron-down';
+    } else {
+        curl.style.display = 'none';
+        toggle.className = 'fas fa-chevron-right';
+    }
+}
 
 async function doLogout() {
-    await fetch('/api/logout', { method: 'POST' });
-    window.location.href = '/login';
+    try {
+        await fetch('/api/logout', { method: 'POST' });
+    } catch (_) {
+        // 忽略网络错误；若 token 已过期则 401 拦截器已触发跳转
+    }
+    if (!_loginRedirecting) {
+        window.location.href = '/login';
+    }
+}
+
+// ==== 系统设置 ====
+async function loadSysConfig() {
+    try {
+        const res = await fetch(API + '/sys-config');
+        const json = await res.json();
+        if (json.data) {
+            const sysName = json.data.sys.name || 'dp_agt_py';
+            document.getElementById('sysName').value = sysName;
+            // 同步更新页面标题和 header
+            const title = sysName + ' 管理平台';
+            document.getElementById('pageTitle').textContent = title;
+            document.getElementById('sysNameHeader').textContent = title;
+            const apiEnabled = json.data.api && json.data.api.auth_enabled;
+            document.getElementById('apiAuthEnabled').checked = apiEnabled || false;
+            document.getElementById('apiAuthToken').value = (json.data.api && json.data.api.auth_token) || '';
+            document.getElementById('apiTokenRow').style.display = apiEnabled ? 'flex' : '';
+        }
+    } catch (_) {}
+}
+
+function generateAPIToken() {
+    const chars = '0123456789abcdef';
+    let token = '';
+    for (let i = 0; i < 32; i++) token += chars[Math.floor(Math.random() * 16)];
+    document.getElementById('apiAuthToken').value = token;
+}
+
+function toggleTokenVisibility() {
+    const inp = document.getElementById('apiAuthToken');
+    const icon = document.querySelector('#apiTokenRow .fa-eye, #apiTokenRow .fa-eye-slash');
+    if (inp.type === 'password') {
+        inp.type = 'text';
+        if (icon) icon.className = 'fas fa-eye-slash';
+    } else {
+        inp.type = 'password';
+        if (icon) icon.className = 'fas fa-eye';
+    }
+}
+
+async function saveSysConfig() {
+    try {
+        const res = await fetch(API + '/sys-config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sys: { name: document.getElementById('sysName').value },
+                api: {
+                    auth_enabled: document.getElementById('apiAuthEnabled').checked,
+                    auth_token: document.getElementById('apiAuthToken').value
+                }
+            })
+        });
+        const json = await res.json();
+        if (json.code === 0) toast('保存成功', 'success');
+        else toast(json.message || '保存失败', 'error');
+    } catch (err) { toast('保存失败: ' + err.message, 'error'); }
+}
+
+// ==== 用户管理 ====
+async function loadUsers() {
+    try {
+        const res = await fetch(API + '/users');
+        const json = await res.json();
+        const data = json.data || [];
+        const tbody = document.getElementById('usersTbody');
+        tbody.innerHTML = data.map(function(u, idx) {
+            const roleLabel = u.role === 1 ? '管理员' : '普通用户';
+            return '<tr><td>' + (idx + 1) + '</td><td>' + escHtml(u.user_name) + '</td><td>' + roleLabel + '</td><td>' + escHtml(u.note||'') + '</td>' +
+                '<td>' + (u.user_name !== 'admin' ? '<button class="cfg-btn cfg-btn-reset" onclick="deleteUser(\'' + escHtml(u.user_name) + '\')" style="padding:4px 10px;font-size:0.8rem;color:#c62828;">删除</button>' : '') + '</td></tr>';
+        }).join('');
+    } catch (err) { toast('加载用户失败: ' + err.message, 'error'); }
+}
+
+async function addUser() {
+    const name = document.getElementById('newUserName').value.trim();
+    const pwd = document.getElementById('newUserPwd').value.trim();
+    const role = parseInt(document.getElementById('newUserRole').value);
+    if (!name || !pwd) { toast('用户名和密码不能为空', 'error'); return; }
+    try {
+        const res = await fetch(API + '/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_name: name, user_pwd: pwd, role: role })
+        });
+        const json = await res.json();
+        if (json.code === 0) {
+            toast('添加成功', 'success');
+            loadUsers();
+            document.getElementById('newUserName').value = '';
+            document.getElementById('newUserPwd').value = '';
+        } else {
+            toast(json.message || '添加失败', 'error');
+        }
+    } catch (err) { toast('添加失败: ' + err.message, 'error'); }
+}
+
+async function deleteUser(username) {
+    if (!confirm('确定删除用户 ' + username + '？')) return;
+    try {
+        const res = await fetch(API + '/users/' + encodeURIComponent(username), { method: 'DELETE' });
+        const json = await res.json();
+        if (json.code === 0) { toast('删除成功', 'success'); loadUsers(); }
+        else { toast(json.message || '删除失败', 'error'); }
+    } catch (err) { toast('删除失败: ' + err.message, 'error'); }
+}
+
+// ==== 日志审查 ====
+function closeAuditDetail() {
+    _auditDetailData = null;
+    document.getElementById('auditDetailModal').classList.remove('show');
+}
+
+const AUDIT_PAGE_SIZE = 10;
+let _auditPage = 1;
+let _auditTotal = 0;
+let _auditMode = 0;  // 0=最近, 1=搜索
+
+async function loadAudit(mode, page = 1) {
+    _auditMode = mode;
+    let url = API + '/audit?page=' + page + '&page_size=' + AUDIT_PAGE_SIZE;
+    if (mode === 1) {
+        const taskId = document.getElementById('auditTaskId').value.trim();
+        const linkId = document.getElementById('auditLinkId').value.trim();
+        if (!taskId && !linkId) { toast('请输入 Task ID 或 Link ID', 'error'); return; }
+        const params = new URLSearchParams();
+        if (taskId) params.set('task_id', taskId);
+        if (linkId) params.set('linkid', linkId);
+        params.set('page', page);
+        params.set('page_size', AUDIT_PAGE_SIZE);
+        url = API + '/audit?' + params.toString();
+    }
+
+    try {
+        _auditPage = page;
+        const res = await fetch(url);
+        const json = await res.json();
+        const data = json.data || {};
+        const list = Array.isArray(data.items) ? data.items : [];
+        _auditTotal = data.total || 0;
+        renderAuditPage(list);
+    } catch (err) { toast('查询失败: ' + err.message, 'error'); }
+}
+
+function renderAuditPage(list) {
+    const total = _auditTotal;
+    const totalPages = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
+    const tbody = document.getElementById('auditTbody');
+    if (total === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:24px;">暂无记录</td></tr>';
+        document.getElementById('auditPager').innerHTML = '';
+        return;
+    }
+    const start = (_auditPage - 1) * AUDIT_PAGE_SIZE;
+    tbody.innerHTML = list.map((t, i) => {
+        const no = start + i + 1;
+        const rid = 'arow-' + no;
+        const taskId = escHtml(t.task_id);
+        const title = t.title || '-';
+        const titleDisplay = title.length > 20 ? escHtml(title.substring(0, 20)) + '...' : escHtml(title);
+        return `<tr class="main-row">
+            <td class="col-seq">${no}</td>
+            <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
+            <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
+            <td>${statusText(t.status)}</td>
+            <td class="col-date">${fmtTs(t.created_at)}</td>
+            <td class="col-date">${fmtTs(t.finished_at)}</td>
+            <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewAuditDetail('${taskId}')" title="详情"><i class="fas fa-history"></i></button></td>
+        </tr>
+        <tr class="row-detail" id="${rid}" style="display:none;">
+            <td colspan="7" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
+                <span class="audit-info-label">Task ID:</span> <code style="font-size:0.82rem;">${taskId}</code>
+                &nbsp;&nbsp;&nbsp;
+                <span class="audit-info-label">Link ID:</span> <code style="font-size:0.82rem;">${escHtml(t.linkid || '-')}</code>
+            </td>
+        </tr>`;
+    }).join('');
+    document.getElementById('auditPager').innerHTML = pagerHtml(_auditPage, totalPages, 'loadAudit', _auditMode);
+}
+
+function toggleRowDetail(rid) {
+    var el = document.getElementById(rid);
+    if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function pagerHtml(page, totalPages, fnName, mode) {
+    const modeArg = (mode === undefined) ? '' : (mode + ',');
+    return '<span style="color:#888;font-size:0.85rem;">第 ' + page + ' / ' + totalPages + ' 页</span>' +
+        '<button class="cfg-btn-sm" onclick="' + fnName + '(' + modeArg + (page - 1) + ')"' + (page <= 1 ? ' disabled' : '') + '><i class="fas fa-chevron-left"></i> 上一页</button>' +
+        '<button class="cfg-btn-sm" onclick="' + fnName + '(' + modeArg + (page + 1) + ')"' + (page >= totalPages ? ' disabled' : '') + '>下一页 <i class="fas fa-chevron-right"></i></button>';
+}
+
+let _auditDetailData = null;  // 当前查看的详情数据，供导出使用
+
+async function viewAuditDetail(taskId) {
+    try {
+        const res = await fetch(API + '/audit/' + encodeURIComponent(taskId));
+        const json = await res.json();
+        const t = json.data;
+        if (!t) return toast('未找到', 'error');
+        _auditDetailData = t;
+        document.getElementById('auditDetailContent').innerHTML = auditTimelineHtml(t);
+        document.getElementById('auditDetailModal').classList.add('show');
+    } catch (err) { toast('加载详情失败: ' + err.message, 'error'); }
+}
+
+function auditTimelineHtml(t) {
+    const events = buildAuditEvents(t);
+    const title = t.title || '-';
+    const startStr = fmtTs(t.created_at);
+    const endStr = t.finished_at ? fmtTs(t.finished_at) : '处理中';
+    // 顶部信息条（固定不随滚动）
+    let html = '<div class="audit-info-bar" style="flex-shrink:0;">' +
+        '<div class="audit-info-row"><span class="audit-info-label">标题:</span> <span class="audit-info-title">' + escHtml(title) + '</span></div>' +
+        '<div class="audit-info-row"><span class="audit-info-label">执行周期:</span> ' + escHtml(startStr) + ' ~ ' + escHtml(endStr) + '</div>' +
+        '<div class="audit-info-row"><span class="audit-info-label">Task ID:</span> ' + escHtml(t.task_id) + ' <span class="audit-info-label" style="margin-left:16px;">Link ID:</span> ' + escHtml(t.linkid || '-') + '</div>' +
+        '</div>';
+    // 时间线 — 可滚动
+    html += '<div class="audit-timeline-scroll" style="flex:1;min-height:0;">';
+    html += '<div class="audit-timeline">';
+    let step = 0;
+    for (const ev of events) {
+        step++;
+        const icon = ev.type === 'callback' ? 'fa-paper-plane'
+            : ev.type === 'tool' ? 'fa-wrench'
+            : ev.type === 'input' ? 'fa-inbox'
+            : ev.type === 'output' ? 'fa-arrow-right'
+            : ev.type === 'done' ? 'fa-check-circle'
+            : ev.type === 'error' ? 'fa-times-circle'
+            : ev.type === 'create' ? 'fa-plus-circle'
+            : ev.type === 'prompt' ? 'fa-file-code'
+            : 'fa-circle';
+        const cls = ev.type === 'callback' ? 'callback'
+            : ev.type === 'error' ? 'error'
+            : ev.type === 'done' ? 'done'
+            : 'info';
+        html += '<div class="timeline-item ' + cls + '">';
+        html += '<div class="timeline-dot"><i class="fas ' + icon + '"></i></div>';
+        html += '<div class="timeline-body">';
+        html += '<div class="timeline-header" onclick="toggleTimelineDetail(this)" style="cursor:pointer;">';
+        if (ev.time) html += '<span class="timeline-time">' + fmtTimelineTs(ev.time) + '</span>';
+        html += '<strong>' + step + '. ' + escHtml(ev.title) + '</strong>';
+        html += '<i class="fas fa-chevron-right timeline-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
+        if (ev.detail) {
+            html += '<pre class="timeline-detail" style="display:none;">' + escHtml(ev.detail) + '</pre>';
+        }
+        html += '</div></div>';
+    }
+    html += '</div>';
+    html += '</div>';  // close audit-timeline-scroll
+    return html;
+}
+
+function buildAuditEvents(t) {
+    const events = [];
+    // 1. 任务创建
+    events.push({ time: t.created_at, type: 'create', title: '任务创建', detail: '访问路径: ' + (t.path || '-') });
+    // 2. 收到请求数据
+    if (t.request_body) {
+        events.push({ time: t.created_at, type: 'input', title: '收到请求数据', detail: jsonFmt(t.request_body) });
+    }
+    // 3. 返回同步响应
+    if (t.request_response) {
+        events.push({ time: t.created_at, type: 'output', title: '返回同步响应', detail: jsonFmt(t.request_response) });
+    }
+    // 4. 渲染提示词
+    if (t.prompt) {
+        events.push({ time: t.created_at, type: 'prompt', title: '渲染提示词', detail: t.prompt });
+    }
+    // 5. 智能体执行过程（流式）
+    if (t.sdk_stream && Array.isArray(t.sdk_stream)) {
+        for (const entry of t.sdk_stream) {
+            const label = entry.type === 'tool' ? '调用工具 ' + (entry.tool_name || '')
+                : entry.type === 'tool_result' ? '工具返回'
+                : entry.type === 'system' ? '系统消息'
+                : entry.type === 'error' ? '错误'
+                : '智能体输出';
+            let detail = entry.text || '';
+            if (entry.tool_input) detail += '\n\n---- 工具输入 ----\n' + entry.tool_input;
+            if (entry.tool_output) detail += '\n\n---- 工具输出 ----\n' + entry.tool_output;
+            events.push({ time: entry.ts || null, type: entry.type || 'text', title: label, detail });
+        }
+    }
+    // 6. Agent 最终输出
+    if (t.sdk_output) {
+        events.push({ time: t.finished_at, type: 'output', title: 'Agent 输出结果', detail: t.sdk_output });
+    }
+    // 7. 回调对方 URL
+    if (t.callback_url) {
+        events.push({
+            time: t.finished_at,
+            type: 'callback',
+            title: '回调对方 URL',
+            detail: 'POST ' + t.callback_url + '\n\n回调体:\n' + (t.callback_body ? jsonFmt(t.callback_body) : '(无)')
+        });
+    }
+    // 8. 完成 / 失败
+    events.push({
+        time: t.finished_at,
+        type: t.status === 'completed' ? 'done' : (t.status === 'failed' || t.status === 'callback_fail' ? 'error' : 'info'),
+        title: statusText(t.status),
+        detail: t.error_message || ''
+    });
+    return events;
+}
+
+function exportAuditMd() {
+    const t = _auditDetailData;
+    if (!t) return toast('无数据', 'error');
+    const linkid = t.linkid || t.task_id?.substring(0, 8) || 'export';
+
+    // 直接请求后端渲染的 HTML 页面，保持与 API 一致
+    fetch('/api/v1/task/log/' + encodeURIComponent(t.task_id) + '?format=html')
+        .then(r => r.text())
+        .then(html => {
+            const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = linkid + '.html';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            toast('已导出');
+        })
+        .catch(err => toast('导出失败: ' + err.message));
 }
 </script>
 </body>

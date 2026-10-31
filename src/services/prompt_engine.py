@@ -1,8 +1,5 @@
 """
-提示词渲染引擎 — 对应 TypeScript 版 `prompt-engine.ts`。
-
-支持 {{request.body}} {{request.linkid}} {{request.xxx.yyy}} 等多层级占位符。
-实现：正则匹配 → 点号路径取值 → JSON 序列化替换。
+提示词渲染引擎 — 支持 `{{request.body}}` `{{request.linkid}}` `{{request.xxx.yyy}}` 等多层级占位符。
 """
 
 from __future__ import annotations

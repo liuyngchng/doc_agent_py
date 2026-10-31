@@ -2,6 +2,18 @@
 // dp_agt_py - 登录页
 // ============================================================
 
+// 切换密码明文/密文显示
+function togglePwd(icon) {
+    const input = icon.parentElement.querySelector('input');
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'fas fa-eye-slash pwd-eye';
+    } else {
+        input.type = 'password';
+        icon.className = 'fas fa-eye pwd-eye';
+    }
+}
+
 document.getElementById('loginForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const userName = document.getElementById('userName').value.trim();

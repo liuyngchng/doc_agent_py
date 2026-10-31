@@ -1,6 +1,6 @@
 /* ============================================================
    dp_agt_py 管理后台样式
-   基于 dp_agt_py 配色方案
+   基于 doc_flow_agent 配色方案
    ============================================================ */
 * {
     margin: 0;
@@ -234,7 +234,7 @@ header p {
 }
 .pwd-field input {
     width: 100%;
-    padding: 10px 12px;
+    padding: 10px 36px 10px 12px;
     border: 2px solid #e0e3e8;
     border-radius: 6px;
     font-size: 0.9rem;
@@ -242,6 +242,26 @@ header p {
 .pwd-field input:focus {
     outline: none;
     border-color: #4b6cb7;
+}
+.pwd-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.pwd-input-wrap input {
+    flex: 1;
+}
+.pwd-eye {
+    position: absolute;
+    right: 10px;
+    color: #999;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: color 0.15s;
+    user-select: none;
+}
+.pwd-eye:hover {
+    color: #4b6cb7;
 }
 .pwd-hint {
     font-size: 0.75rem;
@@ -416,6 +436,7 @@ header p {
 }
 
 .form-g input[type="text"],
+.form-g input[type="password"],
 .form-g textarea,
 .form-g select {
     width: 100%;
@@ -450,32 +471,78 @@ header p {
 }
 
 /* ---- 表格 ---- */
+.table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 .result-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.9rem;
+    white-space: nowrap;
 }
 
 .result-table th {
     background: #f8f9fb;
     font-weight: 600;
     color: #5f6368;
-    text-transform: uppercase;
     font-size: 0.75rem;
     letter-spacing: 0.5px;
     padding: 10px 12px;
     text-align: left;
     border-bottom: 2px solid #e8eaed;
+    white-space: nowrap;
 }
 
 .result-table td {
     padding: 10px 12px;
     border-bottom: 1px solid #f0f0f0;
     color: #444;
+    white-space: nowrap;
 }
 
 .result-table tbody tr:hover { background: #f8f9fe; }
 .result-table tbody tr:last-child td { border-bottom: none; }
+
+/* 时间列 — 固定宽度，格式 YYYY-MM-DD HH:MM:ss */
+.col-date {
+    width: 140px;
+    min-width: 140px;
+    max-width: 140px;
+    white-space: nowrap;
+}
+
+/* 序号列 — 固定宽度，最多显示 4 位数 */
+.col-seq {
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    text-align: center;
+}
+
+/* 标题列 — 来源不可控，设最大宽度，溢出省略 */
+.col-title {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 操作列 — 紧凑图标按钮，列宽不换行 */
+.col-action {
+    white-space: nowrap;
+    width: 40px;
+    text-align: center !important;
+}
+
+.cfg-btn-icon {
+    padding: 5px 8px;
+    font-size: 0.85rem;
+    min-width: 32px;
+    justify-content: center;
+}
 
 .path-mono {
     font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
@@ -529,6 +596,12 @@ header p {
     gap: 8px;
 }
 
+/* “执行过程” 与 “执行结果” 窗口宽度对齐背景页面（.container 为 max-width:1280px） */
+#streamModal .modal-lg,
+#taskModal .modal-lg {
+    width: min(1280px, calc(100vw - 40px));
+}
+
 .modal-actions {
     display: flex;
     gap: 12px;
@@ -561,6 +634,14 @@ header p {
     padding-top: 12px;
     border-top: 2px solid #eef1f6;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    user-select: none;
+}
+.kv-section:hover { color: #3a5a9e; }
+.task-detail-toggle {
+    color: #999;
+    font-size: 0.75rem;
 }
 .task-detail-json {
     background: #2d2d2d;
@@ -632,7 +713,7 @@ header p {
 
 /* ---- 模拟操作 ---- */
 .sim-input {
-    max-width: 720px;
+    width: 100%;
 }
 
 .sim-input .form-g textarea {
@@ -651,6 +732,149 @@ header p {
     color: #2a4365;
 }
 
-.sim-status-timeout {
-    color: #975a16;
+/* ---- 执行过程 - 终端风格 ---- */
+.stream-status-bar {
+    padding: 8px 0;
+    font-size: 0.85rem;
+    min-height: 28px;
+}
+
+.stream-status-live { color: #2a4365; }
+.stream-status-done { color: #888; }
+
+.stream-terminal {
+    flex: 1;
+    background: #1e1e1e;
+    color: #f8f8f2;
+    padding: 16px 18px;
+    border-radius: 8px;
+    min-height: 320px;
+    max-height: 55vh;
+    overflow-y: auto;
+    margin: 0;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* ---- 日志审查时间线 ---- */
+.audit-info-bar {
+    background: #f8f9fb;
+    border: 1px solid #e0e3e8;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 24px;
+}
+.audit-info-row {
+    padding: 4px 0;
+    font-size: 0.88rem;
+    color: #444;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.audit-info-label {
+    font-weight: 600;
+    color: #777;
+    min-width: 70px;
+}
+.audit-info-row code {
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 0.82rem;
+    background: #eef1f6;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: #4b6cb7;
+}
+.audit-info-title {
+    display: inline-block;
+    max-width: 520px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+.audit-timeline {
+    position: relative;
+    padding-left: 32px;
+}
+.audit-timeline::before {
+    content: '';
+    position: absolute;
+    left: 12px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #e0e3e8;
+}
+.audit-timeline-scroll {
+    overflow-y: auto;
+    padding-right: 8px;
+}
+.timeline-item {
+    position: relative;
+    margin-bottom: 20px;
+}
+.timeline-dot {
+    position: absolute;
+    left: -32px;
+    top: 4px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #4b6cb7;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    z-index: 1;
+}
+.timeline-item.callback .timeline-dot { background: #6c5ce7; }
+.timeline-item.error .timeline-dot { background: #c62828; }
+.timeline-item.done .timeline-dot { background: #2e7d32; }
+.timeline-body {
+    background: #f8f9fb;
+    border: 1px solid #e0e3e8;
+    border-radius: 8px;
+    padding: 12px 16px;
+}
+.timeline-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.timeline-header:hover { color: #4b6cb7; }
+.timeline-header strong {
+    color: #2c3e50;
+    font-size: 0.9rem;
+}
+.timeline-time {
+    color: #666;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+}
+.timeline-toggle {
+    margin-left: auto;
+    color: #999;
+    font-size: 0.75rem;
+    transition: transform 0.15s;
+}
+.timeline-detail {
+    margin: 0;
+    padding: 10px 12px;
+    background: #2d2d2d;
+    color: #f8f8f2;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow-y: auto;
 }

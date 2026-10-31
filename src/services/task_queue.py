@@ -1,7 +1,5 @@
 """
-异步任务队列 — 对应 TypeScript 版 `task-queue.ts`。
-
-基于 asyncio 的轻量内存队列，配合 SQLite 持久化状态。
+异步任务队列 — 基于 asyncio 的轻量内存队列，配合 SQLite 持久化状态。
 """
 
 from __future__ import annotations
@@ -15,7 +13,8 @@ import uuid6
 
 from ..config import Config
 from ..logger import get_logger
-from ..store import task_logs_store
+from ..store import task_logs_store, interfaces_store
+from ..time import now_readable, now_ts
 from ..types import (
     AgentInterface,
     ApiResponse,
@@ -23,6 +22,7 @@ from ..types import (
     QueueItem,
     TaskLog,
     TaskStatus,
+    StreamEntry,
 )
 from .callback import deliver_callback, CallbackResult
 from .prompt_engine import render_prompt
@@ -35,11 +35,6 @@ _running: int = 0
 _pending: list[QueueItem] = []
 
 
-def _now() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
-
-
 def _build_response(
     code: int,
     message: str,
@@ -49,7 +44,7 @@ def _build_response(
 ) -> dict[str, Any]:
     return {
         "code": code,
-        "timestamp": _now().replace("T", " ")[:19],
+        "timestamp": now_readable(),
         "message": message,
         "task_id": task_id,
         "linkid": linkid,
@@ -85,9 +80,13 @@ async def _process_item(item: QueueItem) -> None:
     rendered = render_prompt(iface.prompt, body)
     task_logs_store.update_result(task_id, {"prompt": rendered})
 
-    # 调用 Claude Code Agent SDK
+    # 调用 Claude Code Agent SDK（带流式回调）
     assert _cfg is not None
-    result: SdkResult = await run_agent(task_id, rendered, _cfg)
+
+    def _on_stream(entries: list[StreamEntry]) -> None:
+        task_logs_store.append_stream(task_id, entries)
+
+    result: SdkResult = await run_agent(task_id, rendered, _cfg, on_stream_entry=_on_stream)
 
     if not result.success:
         # LLM 调用本身失败
@@ -97,25 +96,26 @@ async def _process_item(item: QueueItem) -> None:
             "sdk_output": result.raw_output,
             "sdk_trace": result.trace,
             "error_message": err_msg,
-            "finished_at": _now(),
+            "finished_at": now_readable(),
         })
 
         fail_payload = _build_response(5000, err_msg, task_id, body.get("linkid", ""), None)
         cb_result: CallbackResult = await deliver_callback(
             body.get("callback_url", ""),
-            fail_payload,  # type: ignore[arg-type]
+            fail_payload,
             _cfg,
+            on_stream=_on_stream,
         )
         task_logs_store.update_result(task_id, {
             "status": TaskStatus.failed,
             "callback_body": cb_result.body,
+            "callback_response": cb_result.response_body,
         })
         log.error("task_failed task_id=%s error=%s", task_id, err_msg)
         return
 
-    # LLM 成功，记录输出
+    # LLM 成功 — 暂不修改 status，等回调完成再统一设
     task_logs_store.update_result(task_id, {
-        "status": TaskStatus.success,
         "sdk_output": result.raw_output,
         "sdk_trace": result.trace,
     })
@@ -130,15 +130,17 @@ async def _process_item(item: QueueItem) -> None:
     success_payload = _build_response(0, "success", task_id, body.get("linkid", ""), parsed_data)
     cb_result = await deliver_callback(
         body.get("callback_url", ""),
-        success_payload,  # type: ignore[arg-type]
+        success_payload,
         _cfg,
+        on_stream=_on_stream,
     )
 
     final_status = TaskStatus.completed if cb_result.success else TaskStatus.callback_fail
     update_fields: dict[str, Any] = {
         "status": final_status,
         "callback_body": cb_result.body,
-        "finished_at": _now(),
+        "callback_response": cb_result.response_body,
+        "finished_at": now_readable(),
     }
     if cb_result.error_msg:
         update_fields["error_message"] = cb_result.error_msg
@@ -175,15 +177,64 @@ async def _process_item_and_decr(item: QueueItem) -> None:
 
 
 def init_task_queue(cfg: Config) -> None:
-    """初始化任务队列（设置配置引用）。"""
+    """初始化任务队列（设置配置引用），并恢复上次未完成的任务。"""
     global _cfg
     _cfg = cfg
+    _recover_orphaned_tasks()
+
+
+def start_recovered_pump() -> None:
+    """事件循环启动后调用：消费恢复的任务（若有）。"""
+    if _pending and _running < (_cfg.sys.max_concurrent_tasks if _cfg else 5):
+        asyncio.create_task(_pump())
+
+
+def _recover_orphaned_tasks() -> None:
+    """启动时恢复上次未完成的任务。"""
+    active = task_logs_store.list_active()
+    if not active:
+        return
+
+    resumed = 0
+    killed = 0
+
+    for task in active:
+        if task.status == TaskStatus.pending:
+            iface = interfaces_store.get(task.interface_id or "")
+            if not iface:
+                task_logs_store.update_result(task.task_id, {
+                    "status": TaskStatus.failed,
+                    "error_message": "服务重启：关联的接口模板已被删除",
+                    "finished_at": now_readable(),
+                    "finished_ts": now_ts(),
+                })
+                killed += 1
+                continue
+
+            try:
+                body = ProcessRequest(json.loads(task.request_body))
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            _pending.append(QueueItem(task_id=task.task_id, path=task.path, iface=iface, body=body))
+            resumed += 1
+        elif task.status == TaskStatus.processing:
+            task_logs_store.update_result(task.task_id, {
+                "status": TaskStatus.failed,
+                "error_message": "服务重启：任务被中断（原进程已退出）",
+                "finished_at": now_readable(),
+                "finished_ts": now_ts(),
+            })
+            killed += 1
+
+    log.info("task_queue_recovered resumed=%d killed=%d", resumed, killed)
 
 
 def enqueue(iface: AgentInterface, body: ProcessRequest) -> dict[str, str]:
     """将任务入队并返回 task_id。"""
     task_id = uuid6.uuid7().hex
-    now = _now()
+    now = now_readable()
+    now_t = now_ts()
 
     # 持久化
     log_entry = TaskLog(
@@ -193,14 +244,19 @@ def enqueue(iface: AgentInterface, body: ProcessRequest) -> dict[str, str]:
         interface_id=iface.id,
         status=TaskStatus.pending,
         request_body=json.dumps(body, ensure_ascii=False),
+        request_response=None,
         prompt="",
         sdk_output=None,
         sdk_trace=None,
+        sdk_stream=None,
         callback_body=None,
+        callback_response=None,
         callback_url=body.get("callback_url", ""),
         error_message=None,
         created_at=now,
         finished_at=None,
+        created_ts=now_t,
+        finished_ts=None,
     )
     task_logs_store.create(log_entry)
 
