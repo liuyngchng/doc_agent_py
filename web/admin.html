@@ -68,26 +68,24 @@
             <!-- ========== 操作模拟 ========== -->
             <div class="cfg-section" id="section-simulate">
                 <h2><i class="fas fa-flask"></i> 操作模拟</h2>
-                <p>选择访问路径并输入测试数据，提交后自动调用 SDK 并记录结果到任务日志。</p>
 
                 <div class="sim-layout">
                     <div class="sim-input">
-                        <div class="form-g">
-                            <label>选择访问路径 <span style="color:#e53935;">*</span></label>
-                            <select id="simIface" required>
-                                <option value="">-- 请选择访问路径 --</option>
-                            </select>
+                        <div class="form-g" style="display:flex;align-items:flex-end;gap:12px;">
+                            <div style="flex:1;max-width:420px;">
+                                <label>选择访问路径 <span style="color:#e53935;">*</span></label>
+                                <select id="simIface" required>
+                                    <option value="">-- 请选择访问路径 --</option>
+                                </select>
+                            </div>
+                            <button id="simSubmit" class="cfg-btn cfg-btn-save" style="flex-shrink:0;">
+                                <i class="fas fa-play"></i> 提交
+                            </button>
                         </div>
                         <div class="form-g">
                             <label>请求体 JSON <span style="color:#e53935;">*</span></label>
                             <textarea id="simBody" required spellcheck="false"></textarea>
-                            <div class="field-hint">
-                                请求体通过 <code>{{request.xxx}}</code> 占位符引用。字段可自由增删。
-                            </div>
                         </div>
-                        <button id="simSubmit" class="cfg-btn cfg-btn-save">
-                            <i class="fas fa-play"></i> 提交
-                        </button>
                         <div id="simResultWrap" style="display:none; margin-top:16px;">
                             <div class="sim-result-title" style="color:#888;font-size:0.82rem;font-weight:600;margin-bottom:6px;">返回结果</div>
                             <pre id="simResult" style="background:#2d2d2d; color:#f8f8f2; padding:14px; border-radius:8px; font-size:0.82rem; font-family:'SF Mono','Consolas','Monaco',monospace; max-height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; margin:0;"></pre>
@@ -113,24 +111,24 @@
 
                 <!-- 执行过程 — 终端风格弹窗 -->
                 <div id="streamModal" class="modal-overlay">
-                    <div class="modal-lg stream-modal-body">
-                        <h3 id="streamModalTitle"><i class="fas fa-terminal"></i> 执行过程</h3>
+                    <div class="modal-lg stream-modal-body" style="display:flex;flex-direction:column;">
+                        <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                            <span id="streamModalTitle"><i class="fas fa-terminal"></i> 执行过程</span>
+                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeStreamModal()" style="margin-left:auto;">关闭</button>
+                        </h3>
                         <div id="streamStatus" class="stream-status-bar"></div>
                         <pre id="streamMessages" class="stream-terminal"></pre>
-                        <div class="modal-actions">
-                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeStreamModal()">关闭</button>
-                        </div>
                     </div>
                 </div>
 
                 <!-- 执行结果 — 详情弹窗 -->
                 <div id="taskModal" class="modal-overlay">
-                    <div class="modal-lg">
-                        <h3 id="taskModalTitle"><i class="fas fa-clipboard-check"></i> 执行结果</h3>
-                        <div id="taskDetail" style="margin-top:20px;"></div>
-                        <div class="modal-actions">
-                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeTaskModal()">关闭</button>
-                        </div>
+                    <div class="modal-lg" style="display:flex;flex-direction:column;">
+                        <h3 id="taskModalTitle" style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                            <span><i class="fas fa-clipboard-check"></i> 执行结果</span>
+                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeTaskModal()" style="margin-left:auto;">关闭</button>
+                        </h3>
+                        <div id="taskDetail" style="margin-top:20px;flex:1;min-height:0;display:flex;flex-direction:column;"></div>
                     </div>
                 </div>
             </div>
@@ -468,38 +466,37 @@ async function viewTask(taskId) {
     if (!t) return toast('未找到', 'error');
 
     document.getElementById('taskDetail').innerHTML = taskDetailHtml(t);
-    document.getElementById('taskModalTitle').innerHTML = '<i class="fas fa-clipboard-check"></i> 执行结果';
     document.getElementById('taskModal').classList.add('show');
 }
 
 function taskDetailHtml(t) {
     let step = 0;
-    return `
-        <table class="kv-table">
-            <tr><td class="kv-key">标题</td><td>${escHtml(t.title || '-')}</td></tr>
-            <tr><td class="kv-key">Task ID</td><td style="font-family:monospace;">${escHtml(t.task_id)}</td></tr>
-            <tr><td class="kv-key">LinkID</td><td>${escHtml(t.linkid || '-')}</td></tr>
-            <tr><td class="kv-key">访问路径</td><td><span class="path-mono">${escHtml(t.path || '-')}</span></td></tr>
-            <tr><td class="kv-key">状态</td><td>${statusText(t.status)}</td></tr>
-            <tr><td class="kv-key">创建时间</td><td>${fmtTs(t.created_at)}</td></tr>
-            <tr><td class="kv-key">完成时间</td><td>${fmtTs(t.finished_at)}</td></tr>
-            <tr><td class="kv-key">错误信息</td><td>${escHtml(t.error_message || '(无)')}</td></tr>
-        </table>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 请求体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
-        <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.request_body))}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> 第${++step}步 请求体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
-        <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.request_response))}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 提示词 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
-        <div class="task-detail-json" style="display:none;">${escHtml(t.prompt || '(未记录)')}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 Agent 输出 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
-        <div class="task-detail-json" style="display:none;">${escHtml(t.sdk_output || '(未记录)')}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 SDK 调用追踪 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
-        <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.sdk_trace))}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 回调体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
-        <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.callback_body))}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> 第${++step}步 回调体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
-        <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.callback_response))}</div>
-    `;
+    const errMsg = t.error_message || '';
+    // 信息头 — 固定不动
+    let html = '<div class="task-info-bar" style="flex-shrink:0;">' +
+        '<div class="kv-section" style="margin-top:0;padding-top:0;cursor:default;">标题：' + escHtml(t.title || '-') + '</div>' +
+        '<div class="kv-section" style="margin-top:4px;padding-top:0;cursor:default;font-weight:300;">Task ID：<code style="font-size:0.78rem;">' + escHtml(t.task_id) + '</code>；&emsp;LinkID：' + escHtml(t.linkid || '-') + '</div>' +
+        '<div class="kv-section" style="margin-top:4px;padding-top:0;cursor:default;font-weight:300;">访问路径：<span class="path-mono">' + escHtml(t.path || '-') + '</span>；&emsp;状态：' + statusText(t.status) + '；&emsp;创建：' + fmtTs(t.created_at) + '；&emsp;完成：' + fmtTs(t.finished_at) + '</div>' +
+        (errMsg ? '<div class="kv-section" style="margin-top:4px;padding-top:0;cursor:default;font-weight:300;color:#c62828;">错误信息：' + escHtml(errMsg) + '</div>' : '') +
+        '</div>';
+    // 折叠区 — 可滚动
+    html += '<div class="task-steps-scroll" style="flex:1;min-height:0;overflow-y:auto;padding-top:12px;">';
+    html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. 请求体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
+    html += '<div class="task-detail-json" style="display:none;">' + escHtml(jsonFmt(t.request_body)) + '</div>';
+    html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> ' + (++step) + '. 请求体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
+    html += '<div class="task-detail-json" style="display:none;">' + escHtml(jsonFmt(t.request_response)) + '</div>';
+    html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. 提示词 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
+    html += '<div class="task-detail-json" style="display:none;">' + escHtml(t.prompt || '(未记录)') + '</div>';
+    html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. Agent 输出 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
+    html += '<div class="task-detail-json" style="display:none;">' + escHtml(t.sdk_output || '(未记录)') + '</div>';
+    html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. SDK 调用追踪 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
+    html += '<div class="task-detail-json" style="display:none;">' + escHtml(jsonFmt(t.sdk_trace)) + '</div>';
+    html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. 回调体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
+    html += '<div class="task-detail-json" style="display:none;">' + escHtml(jsonFmt(t.callback_body)) + '</div>';
+    html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> ' + (++step) + '. 回调体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
+    html += '<div class="task-detail-json" style="display:none;">' + escHtml(jsonFmt(t.callback_response)) + '</div>';
+    html += '</div>';
+    return html;
 }
 
 // ==============================

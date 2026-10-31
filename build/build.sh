@@ -285,7 +285,6 @@ fi
 docker buildx build \
     "${DOCKER_BUILD_ARGS[@]+"${DOCKER_BUILD_ARGS[@]}"}" \
     -t "${FULL_TAG}" \
-    -t "${IMAGE_NAME}:latest" \
     -f "$SCRIPT_DIR/Dockerfile" \
     --load \
     "$PROJECT_ROOT"

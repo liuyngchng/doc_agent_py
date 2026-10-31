@@ -596,10 +596,12 @@ header p {
     gap: 8px;
 }
 
-/* “执行过程” 与 “执行结果” 窗口宽度对齐背景页面（.container 为 max-width:1280px） */
+/* “执行过程” 与 “执行结果” 窗口 — 固定高度 */
 #streamModal .modal-lg,
 #taskModal .modal-lg {
     width: min(1280px, calc(100vw - 40px));
+    height: 90vh;
+    overflow: hidden;
 }
 
 .modal-actions {
@@ -621,11 +623,11 @@ header p {
     border-bottom: 1px solid #f0f0f0;
 }
 .kv-key {
-    width: 120px;
     font-weight: 600;
     color: #777;
     vertical-align: top;
     white-space: nowrap;
+    padding-right: 12px;
 }
 .kv-section {
     font-size: 0.9rem;
@@ -636,7 +638,6 @@ header p {
     font-weight: 600;
     display: flex;
     align-items: center;
-    user-select: none;
 }
 .kv-section:hover { color: #3a5a9e; }
 .task-detail-toggle {
