@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# doc_agent_py Docker 镜像构建脚本
+# dp_agt_py Docker 镜像构建脚本
 #
 # Pip 离线安装（网络差时推荐）:
 #   ./build.sh pip_download_dir=/path/to/wheels
@@ -7,11 +7,11 @@
 #   也可通过环境变量: PIP_DOWNLOAD_DIR=/path/to/wheels ./build.sh
 set -euo pipefail
 
-BUILD_START=$SECONDS
+BUILD_START=$(date +%s)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-IMAGE_NAME="${IMAGE_NAME:-doc_agent_py}"
+IMAGE_NAME="${IMAGE_NAME:-dp_agt_py}"
 PIP_OFFLINE_STAGING="${SCRIPT_DIR}/.pip-offline"
 
 # ── Usage ────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ mkdir -p "$PROJECT_ROOT/deploy/claude-code" "$PROJECT_ROOT/deploy/certs"
 NODE_TARBALL="node-v22.23.2-linux-x64.tar.xz"
 NODE_TARBALL_PATH="$PROJECT_ROOT/deploy/$NODE_TARBALL"
 
-NODE_CACHE_DIR="${NODE_CACHE_DIR:-$HOME/.cache/doc-agent-py}"
+NODE_CACHE_DIR="${NODE_CACHE_DIR:-$HOME/.cache/dp-agt-py}"
 if [ -f "$NODE_CACHE_DIR/$NODE_TARBALL" ]; then
   cp "$NODE_CACHE_DIR/$NODE_TARBALL" "$NODE_TARBALL_PATH"
   echo "[build] Node.js 从本地缓存复用"
@@ -259,7 +259,7 @@ else
     openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
       -keyout "$PERSIST_KEY_FILE" \
       -out "$PERSIST_CERT_FILE" \
-      -subj "/C=CN/O=doc_agent_py/CN=localhost" \
+      -subj "/C=CN/O=dp_agt_py/CN=localhost" \
       -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" 2>/dev/null
   else
     echo "[build] 警告: 未找到 openssl，跳过证书生成，服务将使用 HTTP"
@@ -294,7 +294,7 @@ cleanup_pip_offline_staging
 
 docker image prune -f --filter "dangling=true" || true
 
-BUILD_ELAPSED=$(( SECONDS - BUILD_START ))
+BUILD_ELAPSED=$(( $(date +%s) - BUILD_START ))
 echo "============================================"
 echo " Build complete: ${FULL_TAG}"
 printf " 总耗时: %dm %ds\n" $(( BUILD_ELAPSED / 60 )) $(( BUILD_ELAPSED % 60 ))

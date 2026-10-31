@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# doc_agent_py deploy script
+# dp_agt_py deploy script
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-IMAGE="doc_agent_py:latest"
-CONTAINER="${CONTAINER:-doc_agent_py}"
+IMAGE="dp_agt_py:latest"
+CONTAINER="${CONTAINER:-dp_agt_py}"
 HOST_PORT="${HOST_PORT:-20001}"
 DATA_DIR="${DATA_DIR:-$(pwd)/data}"
 NETWORK="${NETWORK:-llm_net}"

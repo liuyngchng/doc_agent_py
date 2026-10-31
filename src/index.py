@@ -39,7 +39,7 @@ def create_app() -> tuple[FastAPI, Config]:
     init_task_queue(cfg)
     log.info("task_queue_ready")
 
-    app = FastAPI(title="doc_agent_py 管理后台", docs_url=None, redoc_url=None)
+    app = FastAPI(title="dp_agt_py 管理后台", docs_url=None, redoc_url=None)
 
     # 公开路由
     app.include_router(health_router)

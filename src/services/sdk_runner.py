@@ -95,7 +95,7 @@ curl -s -k --noproxy '*' -X POST '{renew_file_url_api}' \\
 4. 如果仍然失败，标记 `need_human: true` 并在 `fail_reason` 中说明原因
 """
 
-    return f"""# doc_agent_py 工作区
+    return f"""# dp_agt_py 工作区
 
 你是电子公文处理智能体，运行在这个临时工作目录中。
 

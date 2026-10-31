@@ -38,7 +38,7 @@ def init_logger(data_dir: str, debug: bool = False) -> logging.Logger:
     global _logger
 
     level = logging.DEBUG if debug else logging.INFO
-    _logger = logging.getLogger("doc_agent_py")
+    _logger = logging.getLogger("dp_agt_py")
     _logger.setLevel(level)
     _logger.handlers.clear()
 
@@ -66,7 +66,7 @@ def get_logger() -> logging.Logger:
     """获取日志器（未初始化时返回 fallback）。"""
     global _logger
     if _logger is None:
-        _logger = logging.getLogger("doc_agent_py")
+        _logger = logging.getLogger("dp_agt_py")
         _logger.setLevel(logging.INFO)
         if not _logger.handlers:
             ch = logging.StreamHandler(sys.stdout)

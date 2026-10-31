@@ -1,5 +1,5 @@
 [project]
-name = "doc-agent-py"
+name = "dp-agt-py"
 version = "0.1.0"
 description = "电子公文智能处理 — Claude Code Agent SDK 网关 (Python版)"
 requires-python = ">=3.11,<3.13"
