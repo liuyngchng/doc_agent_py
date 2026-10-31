@@ -45,37 +45,46 @@ class TaskStatus(StrEnum):
 
 
 @dataclass
-class StreamEntry:
-    """SDK 流式输出中的一条可读记录，实时追加到 DB。"""
-    ts: str          # YYYY-MM-DD HH:MM:ss.SSS
-    type: str        # 'text' | 'tool' | 'tool_result' | 'system' | 'error'
-    text: str        # 人类可读摘要
-    tool_name: str | None = None
-    tool_input: str | None = None   # JSON-stringified tool input
-    tool_output: str | None = None  # tool result summary (truncated)
-
-
-@dataclass
 class TaskLog:
     task_id: str
     linkid: str
+    session_id: str | None        # 关联的 Claude Agent SDK session（resume 用）
     path: str
     interface_id: str | None
     status: TaskStatus
     request_body: str
-    request_response: str | None     # 我方对请求的同步响应
+    request_response: str | None  # 我方对请求的同步响应
     prompt: str
-    sdk_output: str | None
-    sdk_trace: str | None
-    sdk_stream: str | None
+    sdk_output: str | None        # Agent 最终输出（业务产出，回调 data）
     callback_body: str | None
-    callback_response: str | None    # 对方对回调的响应
+    callback_response: str | None  # 对方对回调的响应
     callback_url: str
     error_message: str | None
     created_at: str           # YYYY-MM-DD HH:MM:ss.SSS 本地时间
     finished_at: str | None
     created_ts: int | None    # Unix 毫秒时间戳（检索用）
     finished_ts: int | None
+
+
+# ============================================================
+# Session（公文 ↔ Claude Agent SDK 会话映射）
+# ============================================================
+
+
+class SessionStatus(StrEnum):
+    active = "active"
+    closed = "closed"
+
+
+@dataclass
+class Session:
+    session_id: str
+    linkid: str
+    status: SessionStatus
+    created_at: str
+    updated_at: str
+    created_ts: int | None = None
+    updated_ts: int | None = None
 
 
 # ============================================================

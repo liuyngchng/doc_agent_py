@@ -13,7 +13,7 @@ import bcrypt
 import uuid6
 
 from .time import fmt_local_ts, now_readable, now_ts
-from .types import AgentInterface, TaskLog, TaskStatus, StreamEntry, User
+from .types import AgentInterface, TaskLog, TaskStatus, User, Session, SessionStatus
 
 _db_path: str = ""
 

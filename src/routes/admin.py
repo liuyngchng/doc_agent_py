@@ -1,5 +1,5 @@
 """
-管理后台 API — 模板管理、模拟操作、任务监控、日志审查、系统设置、用户管理。
+管理后台 API — 模板管理、模拟操作、任务监控、任务审查、系统设置、用户管理。
 """
 
 from __future__ import annotations
@@ -118,7 +118,7 @@ def create_admin_router(cfg: Config) -> APIRouter:
                 {"id": "simulate", "icon": "fa-flask", "label": "操作模拟"},
                 {"id": "tasks", "icon": "fa-list-alt", "label": "任务监控"},
             ]
-        tabs.append({"id": "audit", "icon": "fa-search", "label": "日志审查"})
+        tabs.append({"id": "audit", "icon": "fa-search", "label": "任务审查"})
         if is_admin:
             tabs += [
                 {"id": "sys", "icon": "fa-sliders-h", "label": "系统设置"},
@@ -305,7 +305,7 @@ def create_admin_router(cfg: Config) -> APIRouter:
         return {"code": 0, "data": {"status": task.status, "stream": [_stream_entry_to_dict(e) for e in stream]}}
 
     # ============================================================
-    # 日志审查（所有登录用户可访问）
+    # 任务审查（所有登录用户可访问）
     # ============================================================
 
     @router.get("/admin/audit")

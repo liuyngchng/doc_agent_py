@@ -338,36 +338,6 @@ GET /api/v1/task/log/<task_id>[?format=json|html]
         "type": "input",
         "title": "收到请求数据",
         "detail": "{\n  \"linkid\": \"doc_001\", ...\n}"
-      },
-      {
-        "time": "2026-01-01 12:00:00",
-        "type": "prompt",
-        "title": "渲染提示词",
-        "detail": "# 文档处理任务\n..."
-      },
-      {
-        "time": "12:00:05.456",
-        "type": "tool",
-        "title": "调用工具 Bash",
-        "detail": "curl -k -o doc.pdf https://..."
-      },
-      {
-        "time": "12:00:10.000",
-        "type": "output",
-        "title": "Agent 输出结果",
-        "detail": "```json\n{\"need_human\": false, ...}\n```"
-      },
-      {
-        "time": "2026-01-01 12:02:30",
-        "type": "callback",
-        "title": "回调对方 URL",
-        "detail": "POST https://your-system/api/callback\n\n回调体:\n..."
-      },
-      {
-        "time": "2026-01-01 12:02:30",
-        "type": "done",
-        "title": "任务完成",
-        "detail": ""
       }
     ]
   }

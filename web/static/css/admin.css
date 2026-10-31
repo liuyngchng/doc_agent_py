@@ -544,10 +544,14 @@ header p {
     justify-content: center;
 }
 
-.path-mono {
-    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
-    font-size: 0.85rem;
-    color: #6c5ce7;
+/* 蓝色图标按钮 — 任务执行过程/结果/时间线 */
+.cfg-btn-icon-primary {
+    color: #4b6cb7;
+    border-color: #b8c7e0;
+}
+.cfg-btn-icon-primary:hover {
+    background: #eef2fb;
+    border-color: #4b6cb7;
 }
 
 /* 状态徽章 */
@@ -640,6 +644,38 @@ header p {
     align-items: center;
 }
 .kv-section:hover { color: #3a5a9e; }
+
+/* ---- 执行结果弹窗：信息方框 ---- */
+.task-info-bar {
+    background: #f8f9fb;
+    border: 1px solid #e0e3e8;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+}
+.task-info-row {
+    padding: 2px 0;
+    font-size: 0.88rem;
+    color: #444;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.task-info-row .task-info-label {
+    font-weight: 600;
+    color: #777;
+    min-width: 56px;
+}
+.task-info-row code {
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 0.82rem;
+    background: #eef1f6;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: #4b6cb7;
+}
+
 .task-detail-toggle {
     color: #999;
     font-size: 0.75rem;
