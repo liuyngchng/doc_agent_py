@@ -1,5 +1,5 @@
 """
-任务管理路由 — 查询进行中任务、取消、追踪、流式输出、审计日志。
+任务管理路由 — 查询进行中任务、取消、追踪、审计日志。
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from ..config import Config
 from ..logger import get_logger
 from ..store import task_logs_store
 from ..time import now_readable
-from ..types import TaskLog, StreamEntry
+from ..types import TaskLog
 from .auth import build_api_token_dependency
 
 log = get_logger()
@@ -56,6 +56,7 @@ def create_tasks_router(cfg: Config) -> APIRouter:
                     {
                         "task_id": t.task_id,
                         "linkid": t.linkid,
+                        "session_id": t.session_id,
                         "interface_path": t.path,
                         "status": t.status,
                         "callback_url": t.callback_url,
@@ -94,13 +95,6 @@ def create_tasks_router(cfg: Config) -> APIRouter:
             }
 
         task_logs_store.update_status(task_id, "cancelled")
-        task_logs_store.append_stream(task_id, [
-            StreamEntry(
-                ts=now_readable(),
-                type="system",
-                text=f"外部系统通过 API 取消了该任务（DELETE /api/v1/tasks/{task_id}，来自 {from_ip}）",
-            )
-        ])
         log.info("api_cancel_task_ok from_ip=%s task_id=%s linkid=%s", from_ip, task_id, task.linkid)
         return {"code": 0, "message": "任务已取消", "task_id": task_id, "linkid": task.linkid or ""}
 
@@ -139,6 +133,7 @@ def create_tasks_router(cfg: Config) -> APIRouter:
             "data": {
                 "task_id": task.task_id,
                 "linkid": task.linkid,
+                "session_id": task.session_id,
                 "path": task.path,
                 "status": task.status,
                 "request_body": _safe_parse(task.request_body),
@@ -149,42 +144,6 @@ def create_tasks_router(cfg: Config) -> APIRouter:
                 "created_at": task.created_at,
                 "finished_at": task.finished_at,
             },
-        }
-
-    @router.get("/api/v1/task/stream")
-    async def task_stream(
-        request: Request,
-        taskid: str = Query(default=""),
-        _auth: None = Depends(build_api_token_dependency(cfg.sys.api_token)),
-    ):
-        from_ip = request.client.host if request.client else ""
-        if not taskid:
-            log.warning("api_task_stream_missing_taskid from_ip=%s", from_ip)
-            return JSONResponse(
-                status_code=400,
-                content={"code": 1001, "message": "缺少 taskid 参数", "task_id": "", "linkid": ""},
-            )
-
-        task = task_logs_store.get(taskid)
-        if not task:
-            log.warning("api_task_stream_not_found from_ip=%s task_id=%s", from_ip, taskid)
-            return JSONResponse(
-                status_code=404,
-                content={"code": 1001, "message": "任务不存在", "task_id": "", "linkid": ""},
-            )
-
-        stream = task_logs_store.get_stream(taskid)
-        log.info(
-            "api_task_stream from_ip=%s task_id=%s linkid=%s status=%s entries=%d",
-            from_ip, taskid, task.linkid, task.status, len(stream),
-        )
-        return {
-            "code": 0,
-            "timestamp": _now(),
-            "message": "success",
-            "task_id": task.task_id,
-            "linkid": task.linkid,
-            "data": {"status": task.status, "stream": [_stream_entry_to_dict(e) for e in stream]},
         }
 
     # GET /api/v1/task/log/:task_id — 任务审计日志时间线（默认 HTML）
@@ -211,8 +170,7 @@ def create_tasks_router(cfg: Config) -> APIRouter:
                 content={"code": 1001, "message": "任务不存在", "task_id": "", "linkid": ""},
             )
 
-        stream = task_logs_store.get_stream(task_id)
-        events = _build_timeline_events(task, stream)
+        events = _build_timeline_events(task)
         linkid = task.linkid or ""
 
         log.info(
@@ -234,6 +192,7 @@ def create_tasks_router(cfg: Config) -> APIRouter:
             "data": {
                 "task_id": task.task_id,
                 "linkid": task.linkid,
+                "session_id": task.session_id,
                 "path": task.path,
                 "status": task.status,
                 "callback_url": task.callback_url,
@@ -268,8 +227,7 @@ def create_tasks_router(cfg: Config) -> APIRouter:
                 content={"code": 1001, "message": "任务不存在", "task_id": "", "linkid": ""},
             )
 
-        stream = task_logs_store.get_stream(task.task_id)
-        events = _build_timeline_events(task, stream)
+        events = _build_timeline_events(task)
 
         log.info(
             "api_task_link_log from_ip=%s task_id=%s linkid=%s status=%s format=%s events=%d",
@@ -290,6 +248,7 @@ def create_tasks_router(cfg: Config) -> APIRouter:
             "data": {
                 "task_id": task.task_id,
                 "linkid": task.linkid,
+                "session_id": task.session_id,
                 "path": task.path,
                 "status": task.status,
                 "callback_url": task.callback_url,
@@ -304,10 +263,10 @@ def create_tasks_router(cfg: Config) -> APIRouter:
 
 
 # ============================================================
-# 时间线事件构建
+# 时间线事件构建（精简为关键节点，去掉了智能体执行过程）
 # ============================================================
 
-def _build_timeline_events(task: TaskLog, stream: list[StreamEntry]) -> list[dict]:
+def _build_timeline_events(task: TaskLog) -> list[dict]:
     events: list[dict] = []
 
     # 1. 任务创建
@@ -345,32 +304,7 @@ def _build_timeline_events(task: TaskLog, stream: list[StreamEntry]) -> list[dic
             "detail": task.prompt,
         })
 
-    # 5. 智能体执行过程（流式）
-    for entry in stream:
-        etype = entry.type
-        if etype == "tool":
-            label = "调用工具 " + (entry.tool_name or "")
-        elif etype == "tool_result":
-            label = "工具返回"
-        elif etype == "system":
-            label = "系统消息"
-        elif etype == "error":
-            label = "错误"
-        else:
-            label = "智能体输出"
-        detail = entry.text or ""
-        if entry.tool_input:
-            detail += "\n\n---- 工具输入 ----\n" + entry.tool_input
-        if entry.tool_output:
-            detail += "\n\n---- 工具输出 ----\n" + entry.tool_output
-        events.append({
-            "time": entry.ts or None,
-            "type": etype or "text",
-            "title": label,
-            "detail": detail,
-        })
-
-    # 6. Agent 最终输出
+    # 5. Agent 输出结果
     if task.sdk_output:
         events.append({
             "time": task.finished_at,
@@ -379,7 +313,7 @@ def _build_timeline_events(task: TaskLog, stream: list[StreamEntry]) -> list[dic
             "detail": task.sdk_output,
         })
 
-    # 7. 回调对方 URL
+    # 6. 回调对方 URL
     if task.callback_url:
         detail = "POST " + task.callback_url
         if task.callback_body:
@@ -393,7 +327,7 @@ def _build_timeline_events(task: TaskLog, stream: list[StreamEntry]) -> list[dic
             "detail": detail,
         })
 
-    # 8. 完成 / 失败
+    # 7. 完成 / 失败
     final_title = _status_text(task.status)
     if task.status == "completed":
         final_type = "done"
@@ -412,7 +346,7 @@ def _build_timeline_events(task: TaskLog, stream: list[StreamEntry]) -> list[dic
 
 
 # ============================================================
-# HTML 时间线 CSS（提取为常量）
+# HTML 时间线 CSS
 # ============================================================
 
 _TIMELINE_CSS = """*{margin:0;padding:0;box-sizing:border-box}
@@ -536,7 +470,6 @@ def _esc_html(s: object) -> str:
 def _fmt_ts(s: str | None) -> str:
     if not s:
         return "-"
-    # 已是 YYYY-MM-DD HH:MM:ss(.SSS) 或旧的 HH:MM:ss.SSS 则原样返回
     if re.match(r"^\d{2}:\d{2}:\d{2}", s) or re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}", s):
         return s
     try:
@@ -545,14 +478,3 @@ def _fmt_ts(s: str | None) -> str:
         return d.strftime("%Y-%m-%d %H:%M:%S.") + f"{d.microsecond // 1000:03d}"
     except (ValueError, OSError):
         return s
-
-
-def _stream_entry_to_dict(e: StreamEntry) -> dict:
-    d: dict = {"ts": e.ts, "type": e.type, "text": e.text}
-    if e.tool_name:
-        d["tool_name"] = e.tool_name
-    if e.tool_input:
-        d["tool_input"] = e.tool_input
-    if e.tool_output:
-        d["tool_output"] = e.tool_output
-    return d

@@ -1,11 +1,16 @@
 """
-Claude Agent SDK 调用封装 — 每个任务独立工作目录，写入 CLAUDE.md，通过 query() 执行。
+Claude Agent SDK 调用封装
+
+- 工作目录：data/tasks/<sanitize(linkid)>/
+- 支持 session 复用：通过 resume 参数恢复历史对话
+- CLAUDE.md 仅首次写入，resume 时不再覆盖（SDK snapshot 机制）
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,21 +20,19 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     TextBlock,
-    ToolUseBlock,
-    ToolResultBlock,
     query,
 )
 
 from ..config import Config
 from ..logger import get_logger
-from ..time import fmt_local_ts
-from ..types import StreamEntry
+from .sse_bus import publish
 
 log = get_logger()
 
 
-def _ts() -> str:
-    return fmt_local_ts(int(time.time() * 1000))
+def _sanitize_linkid(s: str) -> str:
+    """替换路径分隔符和危险字符，确保 mkdir 成功。"""
+    return re.sub(r'[/\\:*?"<>|]', '_', s)
 
 
 def _build_env(cfg: Config) -> dict[str, str | None]:
@@ -193,6 +196,9 @@ curl -s -k --noproxy '*' -w'\\n' -X POST {doc_util_url}/extract/txt \\
 3. 最终结果用 ```json 代码块包裹
 4. json 代码块之外不要输出任何其他内容
 5. 如果下载失败或文件无法识别，在 JSON 中标记 need_human: true
+6. 如果本次请求涉及某个文件，但当前上下文里没有该文件的文本内容（例如历史被压缩、或这是新文件），
+   按"文件下载"章节自行 curl 下载，并调用文档解析服务提取文本后再分析。
+   若上下文里已有该文件的文本，直接复用，无需重复下载。
 """
 
 
@@ -201,103 +207,55 @@ class SdkResult:
     success: bool
     raw_output: str
     trace: str
+    session_id: str | None = None  # SDK 返回的 session_id，用于后续 resume
     error_message: str | None = None
     duration_ms: int = 0
 
 
-# 需要过滤掉的 SDK 内部系统消息
-_NOISE_SYSTEM_SUBTYPES = {
-    "thinking_tokens",
-    "stream_event",
-    "token_count",
-    "model_usage",
-}
-
-
-def _parse_message(msg: Any) -> list[StreamEntry]:
-    """把单条 SDK 消息拆解成人类可读的 StreamEntry 数组。"""
-    entries: list[StreamEntry] = []
-    now = _ts()
-
-    # assistant message
-    if isinstance(msg, AssistantMessage):
-        if msg.content:
-            for block in msg.content:
-                if isinstance(block, TextBlock) and block.text:
-                    entries.append(StreamEntry(ts=now, type="text", text=block.text))
-                elif isinstance(block, ToolUseBlock):
-                    name = block.name or "unknown"
-                    inp = json.dumps(block.input, default=str, ensure_ascii=False) if block.input else "{}"
-                    entries.append(StreamEntry(
-                        ts=now,
-                        type="tool",
-                        text=f"调用工具: {name}",
-                        tool_name=name,
-                        tool_input=inp,
-                    ))
-
-    # user message (may contain tool_result)
-    elif hasattr(msg, "message") and msg.message:
-        message = msg.message
-        if hasattr(message, "content") and message.content:
-            for block in message.content:
-                if isinstance(block, ToolResultBlock):
-                    is_error = block.is_error
-                    output = ""
-                    if isinstance(block.content, list):
-                        output = "\n".join(
-                            c.text for c in block.content
-                            if hasattr(c, "type") and c.type == "text" and hasattr(c, "text") and c.text
-                        )
-                    elif isinstance(block.content, str):
-                        output = block.content
-                    if len(output) > 200:
-                        output = output[:200] + "..."
-                    entries.append(StreamEntry(
-                        ts=now,
-                        type="error" if is_error else "tool_result",
-                        text=f"工具执行出错: {output}" if is_error else (output or "(空)"),
-                        tool_output=output,
-                    ))
-
-    # system message
-    elif hasattr(msg, "type") and msg.type == "system":
-        subtype = getattr(msg, "subtype", "") or ""
-        if subtype and subtype not in _NOISE_SYSTEM_SUBTYPES:
-            entries.append(StreamEntry(ts=now, type="system", text=subtype))
-
-    return entries
-
-
 async def run_agent(
+    linkid: str,
     task_id: str,
     rendered_prompt: str,
     cfg: Config,
-    on_stream_entry: Callable[[list[StreamEntry]], None] | None = None,
+    resume_session_id: str | None = None,
+    on_session_id: Callable[[str], None] | None = None,
 ) -> SdkResult:
-    """运行 Claude Agent SDK 处理一个任务。"""
-    work_dir = Path(cfg.sys.data_dir) / "tasks" / task_id
+    """运行 Claude Agent SDK 处理一个任务。
+
+    Args:
+        linkid: 公文审批 id，同时作为工作目录名（sanitize 后）
+        rendered_prompt: 渲染后的提示词
+        cfg: 配置
+        resume_session_id: 若传入则 resume 该 session（同一公文复用会话）
+        on_session_id: 首条流式消息拿到 session_id 的瞬间回调（用于立即写 DB，让前端实时看到会话）
+    """
+    work_dir = Path(cfg.sys.data_dir) / "tasks" / _sanitize_linkid(linkid)
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    claude_md_path = work_dir / "CLAUDE.md"
-    claude_md_path.write_text(
-        _build_claude_md(
-            cfg.sys.doc_util_url,
-            cfg.sys.renew_file_url_api,
-            cfg.doc_audit.api_url,
-            cfg.server.port,
-        ),
-        encoding="utf-8",
-    )
+    # CLAUDE.md 仅首次写入（resume 时不覆盖，因为 SDK snapshot 已固化 system prompt）
+    if not resume_session_id:
+        (work_dir / "CLAUDE.md").write_text(
+            _build_claude_md(
+                cfg.sys.doc_util_url,
+                cfg.sys.renew_file_url_api,
+                cfg.doc_audit.api_url,
+                cfg.server.port,
+            ),
+            encoding="utf-8",
+        )
 
-    log.info("sdk_run_start task_id=%s", task_id)
+    log.info(
+        "sdk_run_start task_id=%s linkid=%s resume_session_id=%s work_dir=%s",
+        task_id, linkid, resume_session_id or "(new)", work_dir,
+    )
 
     start = time.monotonic()
     full_output = ""
+    captured_session_id: str | None = None
     trace_messages: list[Any] = []
 
     try:
-        # 应用 LLM 环境变量（幂等覆盖，所有任务共享同一 LLM 配置）
+        # 应用 LLM 环境变量
         env_overrides = _build_env(cfg)
         for k, v in env_overrides.items():
             if v:
@@ -314,18 +272,25 @@ async def run_agent(
                 cfg.doc_audit.api_url,
                 cfg.server.port,
             ),
-            max_buffer_size=10 * 1024 * 1024,  # 10MB for images
+            max_buffer_size=10 * 1024 * 1024,
+            **({"resume": resume_session_id} if resume_session_id else {}),
         )
 
         async for message in query(prompt=rendered_prompt, options=options):
             trace_messages.append(message)
 
-            # 实时回调：把 SDK 消息拆成可读条目
-            if on_stream_entry:
-                entries = _parse_message(message)
-                if entries:
-                    on_stream_entry(entries)
+            # 首条消息即捕获 session_id，用于立即写入 sessions 表
+            sid = getattr(message, "session_id", None)
+            if not captured_session_id and isinstance(sid, str) and sid:
+                captured_session_id = sid
+                if on_session_id:
+                    on_session_id(sid)
 
+            # 推送到 SSE 总线，让前端实时订阅
+            if captured_session_id:
+                publish(captured_session_id, message)
+
+            # 收集 assistant 文本输出
             if isinstance(message, AssistantMessage):
                 if message.content:
                     for block in message.content:
@@ -335,24 +300,38 @@ async def run_agent(
         duration_ms = int((time.monotonic() - start) * 1000)
         trace = json.dumps(trace_messages, default=str, ensure_ascii=False)
         log.info(
-            "sdk_run_complete task_id=%s duration_ms=%d output_len=%d trace_len=%d",
-            task_id, duration_ms, len(full_output), len(trace),
+            "sdk_run_complete task_id=%s linkid=%s session_id=%s duration_ms=%d output_len=%d trace_len=%d",
+            task_id, linkid, captured_session_id, duration_ms, len(full_output), len(trace),
         )
 
-        return SdkResult(success=True, raw_output=full_output, trace=trace, duration_ms=duration_ms)
+        # 发送结束信号，让 SSE 连接自然关闭
+        if captured_session_id:
+            publish(captured_session_id, {"type": "end"})
+
+        return SdkResult(
+            success=True,
+            raw_output=full_output,
+            trace=trace,
+            session_id=captured_session_id,
+            duration_ms=duration_ms,
+        )
 
     except Exception as exc:
         duration_ms = int((time.monotonic() - start) * 1000)
         message = str(exc)
         trace = json.dumps(trace_messages, default=str, ensure_ascii=False)
         log.error(
-            "sdk_run_error task_id=%s duration_ms=%d error=%s",
-            task_id, duration_ms, message,
+            "sdk_run_error task_id=%s linkid=%s session_id=%s duration_ms=%d error=%s",
+            task_id, linkid, captured_session_id, duration_ms, message,
         )
+
+        if captured_session_id:
+            publish(captured_session_id, {"type": "end"})
         return SdkResult(
             success=False,
             raw_output=full_output,
             trace=trace,
+            session_id=captured_session_id,
             error_message=message,
             duration_ms=duration_ms,
         )

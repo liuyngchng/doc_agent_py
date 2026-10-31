@@ -1,5 +1,8 @@
 """
-异步任务队列 — 基于 asyncio 的轻量内存队列，配合 SQLite 持久化状态。
+异步任务队列
+
+- 按 linkid 串行化：同一公文的多次提交排队顺序执行，保证 session 不冲突。
+- 不同 linkid 之间仍可并发（受 max_concurrent_tasks 限制）。
 """
 
 from __future__ import annotations
@@ -13,16 +16,14 @@ import uuid6
 
 from ..config import Config
 from ..logger import get_logger
-from ..store import task_logs_store, interfaces_store
+from ..store import task_logs_store, interfaces_store, sessions_store
 from ..time import now_readable, now_ts
 from ..types import (
     AgentInterface,
-    ApiResponse,
     ProcessRequest,
     QueueItem,
     TaskLog,
     TaskStatus,
-    StreamEntry,
 )
 from .callback import deliver_callback, CallbackResult
 from .prompt_engine import render_prompt
@@ -33,6 +34,9 @@ log = get_logger()
 _cfg: Config | None = None
 _running: int = 0
 _pending: list[QueueItem] = []
+
+# ── per-linkid 串行化 ──
+_link_chains: dict[str, asyncio.Future] = {}
 
 
 def _build_response(
@@ -54,70 +58,82 @@ def _build_response(
 
 def _extract_json(text: str) -> Any:
     """从 Claude 输出中提取 JSON 对象。"""
-    # 尝试 ```json 代码块
     m = re.search(r"```json\s*([\s\S]*?)```", text)
     if m:
         return json.loads(m.group(1).strip())
 
-    # 尝试 ``` 代码块（无语言标注）
     m = re.search(r"```\s*([\s\S]*?)```", text)
     if m:
         return json.loads(m.group(1).strip())
 
-    # 尝试直接解析整个文本
     return json.loads(text.strip())
 
 
 async def _process_item(item: QueueItem) -> None:
-    global _running
     task_id, interface_path, iface, body = item.task_id, item.path, item.iface, item.body
+    linkid = body.get("linkid", "")
 
     # 状态 → processing
     task_logs_store.update_status(task_id, TaskStatus.processing)
-    log.info("task_processing task_id=%s linkid=%s path=%s", task_id, body.get("linkid"), interface_path)
+    log.info("task_processing task_id=%s linkid=%s path=%s", task_id, linkid, interface_path)
 
     # 渲染提示词
     rendered = render_prompt(iface.prompt, body)
     task_logs_store.update_result(task_id, {"prompt": rendered})
 
-    # 调用 Claude Code Agent SDK（带流式回调）
-    assert _cfg is not None
+    # 查 sessions 表：同一 linkid 是否有已存在的 session
+    existing_session = sessions_store.get_by_linkid(linkid)
+    resume_session_id = existing_session.session_id if existing_session else None
 
-    def _on_stream(entries: list[StreamEntry]) -> None:
-        task_logs_store.append_stream(task_id, entries)
+    if resume_session_id:
+        log.info("session_resume task_id=%s linkid=%s session_id=%s", task_id, linkid, resume_session_id)
 
-    result: SdkResult = await run_agent(task_id, rendered, _cfg, on_stream_entry=_on_stream)
+    # 调用 Claude Agent SDK。
+    # 通过 on_session_id 回调在首条流式消息拿到 session_id 的瞬间就写入 DB，
+    # 这样任务仍在 processing 时，前端「对话」按钮就能实时看到会话。
+    result: SdkResult = await run_agent(
+        linkid, task_id, rendered, _cfg, resume_session_id,
+        on_session_id=lambda sid: (
+            sessions_store.upsert(sid, linkid),
+            task_logs_store.update_result(task_id, {"session_id": sid}),
+        ),
+    )
+
+    # 兜底：若 on_session_id 未触发（例如异常路径），任务结束后再写一次
+
+    # 首条消息拿到 session_id 就立即写入 sessions 表
+    if result.session_id:
+        sessions_store.upsert(result.session_id, linkid)
 
     if not result.success:
         # LLM 调用本身失败
         err_msg = result.error_message or "Claude 处理失败"
         task_logs_store.update_result(task_id, {
             "status": TaskStatus.failed,
+            "session_id": result.session_id,
             "sdk_output": result.raw_output,
-            "sdk_trace": result.trace,
             "error_message": err_msg,
             "finished_at": now_readable(),
         })
 
-        fail_payload = _build_response(5000, err_msg, task_id, body.get("linkid", ""), None)
+        fail_payload = _build_response(5000, err_msg, task_id, linkid, None)
         cb_result: CallbackResult = await deliver_callback(
             body.get("callback_url", ""),
             fail_payload,
             _cfg,
-            on_stream=_on_stream,
         )
         task_logs_store.update_result(task_id, {
             "status": TaskStatus.failed,
             "callback_body": cb_result.body,
             "callback_response": cb_result.response_body,
         })
-        log.error("task_failed task_id=%s error=%s", task_id, err_msg)
+        log.error("task_failed task_id=%s linkid=%s error=%s", task_id, linkid, err_msg)
         return
 
     # LLM 成功 — 暂不修改 status，等回调完成再统一设
     task_logs_store.update_result(task_id, {
+        "session_id": result.session_id,
         "sdk_output": result.raw_output,
-        "sdk_trace": result.trace,
     })
 
     # 尝试解析 Claude 输出的 JSON
@@ -127,12 +143,11 @@ async def _process_item(item: QueueItem) -> None:
         parsed_data = {"raw_output": result.raw_output}
 
     # 回调
-    success_payload = _build_response(0, "success", task_id, body.get("linkid", ""), parsed_data)
+    success_payload = _build_response(0, "success", task_id, linkid, parsed_data)
     cb_result = await deliver_callback(
         body.get("callback_url", ""),
         success_payload,
         _cfg,
-        on_stream=_on_stream,
     )
 
     final_status = TaskStatus.completed if cb_result.success else TaskStatus.callback_fail
@@ -146,7 +161,7 @@ async def _process_item(item: QueueItem) -> None:
         update_fields["error_message"] = cb_result.error_msg
     task_logs_store.update_result(task_id, update_fields)
 
-    log.info("task_done task_id=%s status=%s", task_id, final_status)
+    log.info("task_done task_id=%s linkid=%s status=%s", task_id, linkid, final_status)
 
 
 async def _pump() -> None:
@@ -163,7 +178,27 @@ async def _pump() -> None:
             break
 
         _running += 1
-        asyncio.create_task(_process_item_and_decr(item))
+
+        # per-linkid 串行化：挂到该 linkid 的链后面
+        linkid = item.body.get("linkid", "")
+        prev = _link_chains.get(linkid)
+        loop = asyncio.get_event_loop()
+
+        async def _run(prev_fut: asyncio.Future | None, it: QueueItem) -> None:
+            try:
+                if prev_fut is not None:
+                    await prev_fut
+                await _process_item(it)
+            finally:
+                global _running
+                _running -= 1
+                if _link_chains.get(it.body.get("linkid", "")) is not None:
+                    _link_chains.pop(it.body.get("linkid", ""), None)
+                if _pending and _running < (_cfg.sys.max_concurrent_tasks if _cfg else 5):
+                    await _pump()
+
+        task = loop.create_task(_run(prev, item))
+        _link_chains[linkid] = task
 
 
 async def _process_item_and_decr(item: QueueItem) -> None:
@@ -240,6 +275,7 @@ def enqueue(iface: AgentInterface, body: ProcessRequest) -> dict[str, str]:
     log_entry = TaskLog(
         task_id=task_id,
         linkid=body.get("linkid", ""),
+        session_id=None,
         path=iface.path,
         interface_id=iface.id,
         status=TaskStatus.pending,
@@ -247,8 +283,6 @@ def enqueue(iface: AgentInterface, body: ProcessRequest) -> dict[str, str]:
         request_response=None,
         prompt="",
         sdk_output=None,
-        sdk_trace=None,
-        sdk_stream=None,
         callback_body=None,
         callback_response=None,
         callback_url=body.get("callback_url", ""),

@@ -1,5 +1,5 @@
 """
-SQLite 存储层 — 接口模板、任务日志、用户、配置 KV。
+SQLite 存储层 — 接口模板、任务日志、session 映射、用户、配置 KV。
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ def init_store(data_dir: str) -> None:
             CREATE TABLE IF NOT EXISTS task_logs (
               task_id       TEXT PRIMARY KEY,
               linkid        TEXT,
+              session_id    TEXT,
               path          TEXT,
               interface_id  TEXT,
               status        TEXT,
@@ -47,8 +48,6 @@ def init_store(data_dir: str) -> None:
               request_response TEXT,
               prompt        TEXT,
               sdk_output    TEXT,
-              sdk_trace     TEXT,
-              sdk_stream    TEXT,
               callback_body TEXT,
               callback_response TEXT,
               callback_url  TEXT,
@@ -57,6 +56,16 @@ def init_store(data_dir: str) -> None:
               finished_at   TEXT,
               created_ts    INTEGER,
               finished_ts   INTEGER
+            );
+
+            CREATE TABLE IF NOT EXISTS sessions (
+              session_id  TEXT PRIMARY KEY,
+              linkid      TEXT NOT NULL UNIQUE,
+              status      TEXT NOT NULL DEFAULT 'active',
+              created_at  TEXT,
+              updated_at  TEXT,
+              created_ts  INTEGER,
+              updated_ts  INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS users (
@@ -99,12 +108,14 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
     """确保所有迁移列存在。"""
     migrations = [
         # task_logs additions
-        ("task_logs", "sdk_trace", "TEXT"),
-        ("task_logs", "sdk_stream", "TEXT"),
         ("task_logs", "request_response", "TEXT"),
         ("task_logs", "callback_response", "TEXT"),
         ("task_logs", "created_ts", "INTEGER"),
         ("task_logs", "finished_ts", "INTEGER"),
+        ("task_logs", "session_id", "TEXT"),
+        # keep old columns for backward compat, no longer written
+        ("task_logs", "sdk_trace", "TEXT"),
+        ("task_logs", "sdk_stream", "TEXT"),
         # users additions
         ("users", "must_change_pwd", "INTEGER DEFAULT 0"),
         ("users", "user_version", "INTEGER DEFAULT 1"),
@@ -112,6 +123,11 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
         # agent_interfaces additions
         ("agent_interfaces", "created_ts", "INTEGER"),
         ("agent_interfaces", "updated_ts", "INTEGER"),
+        # sessions additions
+        ("sessions", "created_at", "TEXT"),
+        ("sessions", "updated_at", "TEXT"),
+        ("sessions", "created_ts", "INTEGER"),
+        ("sessions", "updated_ts", "INTEGER"),
     ]
     for table, col, col_type in migrations:
         try:
@@ -144,7 +160,6 @@ def _backfill_ts_columns(conn: sqlite3.Connection) -> None:
         for r in stale:
             at_val = r["at_val"]
             try:
-                # Try parsing as ISO (legacy)
                 dt = datetime.fromisoformat(at_val.replace("Z", "+00:00"))
                 ms = int(dt.timestamp() * 1000)
                 readable = fmt_local_ts(ms)
@@ -435,15 +450,15 @@ class TaskLogsStore:
         with _connect() as conn:
             conn.execute(
                 """INSERT INTO task_logs
-                   (task_id, linkid, path, interface_id, status, request_body, request_response, prompt,
-                    sdk_output, sdk_trace, sdk_stream, callback_body, callback_response, callback_url,
+                   (task_id, linkid, session_id, path, interface_id, status, request_body, request_response, prompt,
+                    sdk_output, callback_body, callback_response, callback_url,
                     error_message, created_at, finished_at, created_ts, finished_ts)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    log.task_id, log.linkid, log.path, log.interface_id,
+                    log.task_id, log.linkid, log.session_id, log.path, log.interface_id,
                     log.status.value if isinstance(log.status, TaskStatus) else log.status,
                     log.request_body, log.request_response, log.prompt,
-                    log.sdk_output, log.sdk_trace, log.sdk_stream,
+                    log.sdk_output,
                     log.callback_body, log.callback_response, log.callback_url,
                     log.error_message, log.created_at, log.finished_at,
                     log.created_ts, log.finished_ts,
@@ -459,11 +474,9 @@ class TaskLogsStore:
 
     def update_result(self, task_id: str, fields: dict[str, Any]) -> None:
         """更新任务日志的部分字段。finished_at 设置时自动附带 finished_ts。"""
-        # Auto-add finished_ts when setting finished_at
         if "finished_at" in fields and "finished_ts" not in fields:
             fields = {**fields, "finished_ts": now_ts()}
 
-        # Convert TaskStatus enum to string value
         if "status" in fields and isinstance(fields["status"], TaskStatus):
             fields["status"] = fields["status"].value
 
@@ -487,7 +500,7 @@ class TaskLogsStore:
         return _row_to_task_log(row) if row else None
 
     def get_latest_by_linkid(self, linkid: str) -> TaskLog | None:
-        """按 linkid 取最新一条任务（linkid 不唯一，按创建时间倒序）。"""
+        """按 linkid 取最新一条任务。"""
         with _connect() as conn:
             row = conn.execute(
                 "SELECT * FROM task_logs WHERE linkid = ? ORDER BY created_ts DESC, rowid DESC LIMIT 1",
@@ -526,32 +539,14 @@ class TaskLogsStore:
             ).fetchall()
         return [_row_to_task_log(r) for r in rows]
 
-    def append_stream(self, task_id: str, entries: list[StreamEntry]) -> None:
-        """追加 SDK 流式输出条目到任务的 sdk_stream JSON 数组。"""
-        if not entries:
-            return
+    def has_active_by_linkid(self, linkid: str) -> bool:
+        """检查指定 linkid 是否有 pending/processing 的任务。"""
         with _connect() as conn:
             row = conn.execute(
-                "SELECT sdk_stream FROM task_logs WHERE task_id = ?", (task_id,)
+                "SELECT 1 AS c FROM task_logs WHERE linkid = ? AND status IN ('pending','processing') LIMIT 1",
+                (linkid,),
             ).fetchone()
-            existing: list[dict] = _safe_parse_array(row["sdk_stream"]) if row and row["sdk_stream"] else []
-            for e in entries:
-                existing.append(_stream_entry_to_dict(e))
-            conn.execute(
-                "UPDATE task_logs SET sdk_stream = ? WHERE task_id = ?",
-                (json.dumps(existing, ensure_ascii=False), task_id),
-            )
-            conn.commit()
-
-    def get_stream(self, task_id: str) -> list[StreamEntry]:
-        """读取任务当前已积累的 SDK 流式输出。"""
-        with _connect() as conn:
-            row = conn.execute(
-                "SELECT sdk_stream FROM task_logs WHERE task_id = ?", (task_id,)
-            ).fetchone()
-        if row and row["sdk_stream"]:
-            return _safe_parse_array(row["sdk_stream"])
-        return []
+        return row is not None
 
     def delete_expired(self, retention_days: int) -> int:
         """清理过期的非活跃任务记录（status 不在 pending/processing）。返回清理的任务数。"""
@@ -565,12 +560,6 @@ class TaskLogsStore:
             )
             conn.commit()
             return cur.rowcount
-
-    def list_task_ids(self) -> list[str]:
-        """返回所有任务的 task_id 列表，用于清理对应的工作目录。"""
-        with _connect() as conn:
-            rows = conn.execute("SELECT task_id FROM task_logs").fetchall()
-        return [r["task_id"] for r in rows]
 
     def search(self, task_id: str, linkid: str, limit: int = 100) -> list[TaskLog]:
         """按 task_id 或 linkid 查询任务（模糊匹配）。"""
@@ -646,6 +635,66 @@ class TaskLogsStore:
                     (limit, offset),
                 ).fetchall()
             return [_row_to_task_log(r) for r in items], total
+
+
+# ============================================================
+# Session CRUD（linkid ↔ session_id 映射）
+# ============================================================
+
+class SessionsStore:
+    def upsert(self, session_id: str, linkid: str) -> Session:
+        """插入或更新（存在则刷新 updated_at，不存在则新建）。"""
+        now = now_readable()
+        ts = now_ts()
+        existing = self.get(session_id)
+        if existing:
+            with _connect() as conn:
+                conn.execute(
+                    "UPDATE sessions SET updated_at = ?, updated_ts = ? WHERE session_id = ?",
+                    (now, ts, session_id),
+                )
+                conn.commit()
+        else:
+            with _connect() as conn:
+                conn.execute(
+                    "INSERT INTO sessions (session_id, linkid, status, created_at, updated_at, created_ts, updated_ts) VALUES (?,?,?,?,?,?,?)",
+                    (session_id, linkid, "active", now, now, ts, ts),
+                )
+                conn.commit()
+        return self.get(session_id)  # type: ignore[return-value]
+
+    def get(self, session_id: str) -> Session | None:
+        with _connect() as conn:
+            row = conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+        return _row_to_session(row) if row else None
+
+    def get_by_linkid(self, linkid: str) -> Session | None:
+        """按 linkid 查找 active session。"""
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM sessions WHERE linkid = ? AND status = ?", (linkid, "active")
+            ).fetchone()
+        return _row_to_session(row) if row else None
+
+    def remove(self, session_id: str) -> bool:
+        return _connect().execute("DELETE FROM sessions WHERE session_id = ?", (session_id,)).rowcount > 0
+
+    def list_all(self) -> list[Session]:
+        """列出所有 session（清理工作目录用）。"""
+        with _connect() as conn:
+            rows = conn.execute("SELECT * FROM sessions").fetchall()
+        return [_row_to_session(r) for r in rows]
+
+    def delete_expired(self, retention_days: int) -> list[Session]:
+        """清理过期的 session（updated_ts 超过 retentionDays 天）。返回被删除的 session 列表。"""
+        cutoff_ms = now_ts() - retention_days * 24 * 3600 * 1000
+        with _connect() as conn:
+            expired = conn.execute(
+                "SELECT * FROM sessions WHERE updated_ts < ?", (cutoff_ms,)
+            ).fetchall()
+            conn.execute("DELETE FROM sessions WHERE updated_ts < ?", (cutoff_ms,))
+            conn.commit()
+        return [_row_to_session(r) for r in expired]
 
 
 # ============================================================
@@ -755,12 +804,21 @@ class ConfigStore:
 
 interfaces_store = InterfacesStore()
 task_logs_store = TaskLogsStore()
+sessions_store = SessionsStore()
 users_store = UsersStore()
 config_store = ConfigStore()
 
 # 公开密码工具函数
 hash_password = _hash_password
 compare_password = _check_password
+
+# 公开 getDb（index.py 清理用）
+get_db = lambda: _connect()
+
+
+def sanitize_linkid(linkid: str) -> str:
+    """替换路径分隔符和危险字符，确保 mkdir 成功。"""
+    return linkid.replace("/", "_").replace("\\", "_").replace(":", "_").replace("*", "_").replace("?", "_").replace("\"", "_").replace("<", "_").replace(">", "_").replace("|", "_")
 
 
 # ============================================================
@@ -784,6 +842,7 @@ def _row_to_task_log(row: sqlite3.Row) -> TaskLog:
     return TaskLog(
         task_id=row["task_id"],
         linkid=row["linkid"] or "",
+        session_id=row["session_id"],
         path=row["path"] or "",
         interface_id=row["interface_id"],
         status=TaskStatus(row["status"]),
@@ -791,8 +850,6 @@ def _row_to_task_log(row: sqlite3.Row) -> TaskLog:
         request_response=row["request_response"],
         prompt=row["prompt"] or "",
         sdk_output=row["sdk_output"],
-        sdk_trace=row["sdk_trace"],
-        sdk_stream=row["sdk_stream"],
         callback_body=row["callback_body"],
         callback_response=row["callback_response"],
         callback_url=row["callback_url"] or "",
@@ -801,6 +858,18 @@ def _row_to_task_log(row: sqlite3.Row) -> TaskLog:
         finished_at=row["finished_at"],
         created_ts=row["created_ts"],
         finished_ts=row["finished_ts"],
+    )
+
+
+def _row_to_session(row: sqlite3.Row) -> Session:
+    return Session(
+        session_id=row["session_id"],
+        linkid=row["linkid"],
+        status=SessionStatus(row["status"]),
+        created_at=row["created_at"] or "",
+        updated_at=row["updated_at"] or "",
+        created_ts=row["created_ts"],
+        updated_ts=row["updated_ts"],
     )
 
 
@@ -816,38 +885,3 @@ def _row_to_user(row: sqlite3.Row) -> User:
         created_at=row["created_at"] or "",
         created_ts=row["created_ts"],
     )
-
-
-def _safe_parse_array(s: str | None) -> list[StreamEntry]:
-    """安全解析 JSON 数组为 StreamEntry 列表，失败时返回空。"""
-    if not s:
-        return []
-    try:
-        parsed = json.loads(s)
-        if not isinstance(parsed, list):
-            return []
-        result: list[StreamEntry] = []
-        for item in parsed:
-            if isinstance(item, dict):
-                result.append(StreamEntry(
-                    ts=item.get("ts", ""),
-                    type=item.get("type", "text"),
-                    text=item.get("text", ""),
-                    tool_name=item.get("tool_name"),
-                    tool_input=item.get("tool_input"),
-                    tool_output=item.get("tool_output"),
-                ))
-        return result
-    except (json.JSONDecodeError, TypeError):
-        return []
-
-
-def _stream_entry_to_dict(entry: StreamEntry) -> dict:
-    d: dict[str, Any] = {"ts": entry.ts, "type": entry.type, "text": entry.text}
-    if entry.tool_name:
-        d["tool_name"] = entry.tool_name
-    if entry.tool_input:
-        d["tool_input"] = entry.tool_input
-    if entry.tool_output:
-        d["tool_output"] = entry.tool_output
-    return d

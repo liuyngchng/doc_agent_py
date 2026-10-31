@@ -59,7 +59,9 @@ def submit_task(
     if not body.get("callback_url"):
         return 400, _build_response(1001, "缺少 callback_url", "", "")
 
-    # 检查队列上限
+    # 同一 linkid 有未完成的任务时拒绝，防止重复投递
+    if task_logs_store.has_active_by_linkid(linkid):
+        return 409, _build_response(2003, "该公文尚有任务正在处理中，请等待完成后再次提交", "", linkid)
     max_pending = cfg.sys.max_pending_tasks
     active_count = get_running_count() + get_pending_count()
     if active_count >= max_pending:

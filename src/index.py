@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import load_config, ensure_dirs, Config
 from .logger import init_logger, get_logger
-from .store import init_store, task_logs_store, config_store
+from .store import init_store, task_logs_store, sessions_store, config_store, sanitize_linkid
 from .services.task_queue import init_task_queue, start_recovered_pump
 from .routes.health import router as health_router
 from .routes.auth import router as auth_router, build_api_token_dependency
@@ -129,14 +129,27 @@ async def _cleanup_expired_tasks_loop():
     while True:
         try:
             deleted = task_logs_store.delete_expired(retention_days)
-            # 清理已删除任务对应的磁盘工作目录
-            remaining_ids = set(task_logs_store.list_task_ids())
+
+            # 清理过期 session（超过 retentionDays 未见新提交）
+            expired_sessions = sessions_store.delete_expired(retention_days)
+            if expired_sessions:
+                log.info("session_cleanup_start expired_count=%d retention_days=%d", len(expired_sessions), retention_days)
+                for s in expired_sessions:
+                    try:
+                        from claude_agent_sdk import delete_session
+                        await delete_session(s.session_id)
+                    except Exception as err:
+                        log.warning("session_delete_sdk_error session_id=%s error=%s", s.session_id, err)
+
+            # 清理过期 session 对应的磁盘工作目录
             tasks_dir = Path(cfg.sys.data_dir) / "tasks"
             if tasks_dir.exists():
+                active_set = {sanitize_linkid(s.linkid) for s in sessions_store.list_all()}
                 for d in tasks_dir.iterdir():
-                    if d.name not in remaining_ids:
+                    if d.name not in active_set:
                         shutil.rmtree(d, ignore_errors=True)
-            log.info("cleanup_done retention_days=%d deleted_rows=%d", retention_days, deleted)
+
+            log.info("cleanup_done retention_days=%d deleted_rows=%d expired_sessions=%d", retention_days, deleted, len(expired_sessions))
         except Exception as err:
             log.error("cleanup_error error=%s", err)
         await asyncio.sleep(24 * 60 * 60)

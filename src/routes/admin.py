@@ -5,14 +5,12 @@
 from __future__ import annotations
 
 import json
-import os
 import socket
 from pathlib import Path
 from typing import Any
 
-import uuid6
 from fastapi import APIRouter, Request, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from ..config import Config
 from ..logger import get_logger
@@ -20,11 +18,13 @@ from ..store import (
     interfaces_store,
     task_logs_store,
     users_store,
+    sessions_store,
     config_store,
     hash_password,
+    sanitize_linkid,
 )
 from ..time import now_readable
-from ..types import TaskStatus, StreamEntry
+from ..services.sse_bus import subscribe, unsubscribe, sse_encode
 from .auth import get_current_user, _require_api_auth, _require_admin, _validate_password_strength
 from .process import submit_task
 
@@ -62,10 +62,9 @@ def _extract_title(request_body: str | None) -> str:
 
 
 def _detect_primary_ip() -> str:
-    """探测主要 IP（优先内网地址，其次外网地址）。"""
+    """探测主要 IP（优先内网地址）。"""
     candidates: list[str] = []
     try:
-        # Get all interface addresses
         for name in socket.if_nameindex():
             try:
                 addrs = socket.getaddrinfo(socket.if_indextoname(name.index), None, socket.AF_INET)
@@ -84,20 +83,17 @@ def _detect_primary_ip() -> str:
     return candidates[0] if candidates else "127.0.0.1"
 
 
-def _now_iso() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _stream_entry_to_dict(e: StreamEntry) -> dict:
-    d: dict = {"ts": e.ts, "type": e.type, "text": e.text}
-    if e.tool_name:
-        d["tool_name"] = e.tool_name
-    if e.tool_input:
-        d["tool_input"] = e.tool_input
-    if e.tool_output:
-        d["tool_output"] = e.tool_output
-    return d
+def _iface_to_dict(iface: Any) -> dict:
+    return {
+        "id": iface.id,
+        "name": iface.name,
+        "path": iface.path,
+        "prompt": iface.prompt,
+        "created_at": iface.created_at,
+        "updated_at": iface.updated_at,
+        "created_ts": iface.created_ts,
+        "updated_ts": iface.updated_ts,
+    }
 
 
 def create_admin_router(cfg: Config) -> APIRouter:
@@ -227,7 +223,6 @@ def create_admin_router(cfg: Config) -> APIRouter:
 
         log.debug("simulate_request_received path=%s body=%s", interface_path, request_body)
 
-        # 对外接口完全一致的逻辑：校验接口、队列上限、入队
         status_code, resp = submit_task(interface_path, request_body, cfg)
 
         if status_code >= 400:
@@ -262,6 +257,7 @@ def create_admin_router(cfg: Config) -> APIRouter:
                     {
                         "task_id": t.task_id,
                         "linkid": t.linkid,
+                        "session_id": t.session_id,
                         "title": _extract_title(t.request_body),
                         "path": t.path,
                         "status": t.status,
@@ -290,19 +286,71 @@ def create_admin_router(cfg: Config) -> APIRouter:
                 "request_response": _safe_parse(task.request_response),
                 "callback_body": _safe_parse(task.callback_body),
                 "callback_response": _safe_parse(task.callback_response),
-                "sdk_trace": _safe_parse(task.sdk_trace),
-                "sdk_stream": _safe_parse(task.sdk_stream),
             },
         }
 
-    @router.get("/admin/tasks/{task_id}/stream")
-    async def get_task_stream(task_id: str, request: Request):
+    # ---- 会话记录（SDK 原生对话） ----
+
+    @router.get("/admin/sessions/{session_id}/messages")
+    async def session_messages(session_id: str, request: Request):
         await _require_api_auth(request)
-        task = task_logs_store.get(task_id)
-        if not task:
-            raise HTTPException(status_code=404, detail={"code": 1001, "message": "任务不存在"})
-        stream = task_logs_store.get_stream(task_id)
-        return {"code": 0, "data": {"status": task.status, "stream": [_stream_entry_to_dict(e) for e in stream]}}
+        if not session_id:
+            raise HTTPException(status_code=400, detail={"code": 1001, "message": "缺少 session_id"})
+
+        session = sessions_store.get(session_id)
+        work_dir = str(Path(cfg.sys.data_dir) / "tasks" / sanitize_linkid(session.linkid if session else ""))
+
+        try:
+            from claude_agent_sdk import get_session_messages
+            messages = await get_session_messages(session_id, dir=work_dir, include_system_messages=False)
+            return {"code": 0, "data": {"session_id": session_id, "messages": messages}}
+        except Exception as err:
+            msg = str(err)
+            log.error("session_messages_error session_id=%s error=%s", session_id, msg)
+            raise HTTPException(status_code=500, detail={"code": 1001, "message": f"读取会话记录失败: {msg}"})
+
+    # SSE 实时推送（任务处理中时前端订阅）
+    @router.get("/admin/sessions/{session_id}/stream")
+    async def session_stream(session_id: str, request: Request):
+        await _require_api_auth(request)
+        if not session_id:
+            raise HTTPException(status_code=400, detail={"code": 1001, "message": "缺少 session_id"})
+
+        import asyncio
+
+        session = sessions_store.get(session_id)
+        work_dir = str(Path(cfg.sys.data_dir) / "tasks" / sanitize_linkid(session.linkid if session else ""))
+
+        async def _event_stream():
+            q: asyncio.Queue = subscribe(session_id)
+            try:
+                # 先推全量快照，前端据此渲染已有历史
+                try:
+                    from claude_agent_sdk import get_session_messages
+                    messages = await get_session_messages(session_id, dir=work_dir, include_system_messages=False)
+                    yield sse_encode({"type": "snapshot", "messages": messages})
+                except Exception as err:
+                    yield sse_encode({"type": "error", "message": str(err)})
+
+                # 不断推送增量消息
+                while True:
+                    msg = await q.get()
+                    yield sse_encode(msg)
+                    m = msg if isinstance(msg, dict) else {}
+                    if m.get("type") == "end":
+                        break
+            finally:
+                unsubscribe(session_id, q)
+
+        return StreamingResponse(
+            _event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     # ============================================================
     # 任务审查（所有登录用户可访问）
@@ -330,6 +378,7 @@ def create_admin_router(cfg: Config) -> APIRouter:
                     {
                         "task_id": t.task_id,
                         "linkid": t.linkid,
+                        "session_id": t.session_id,
                         "title": _extract_title(t.request_body),
                         "path": t.path,
                         "status": t.status,
@@ -352,6 +401,7 @@ def create_admin_router(cfg: Config) -> APIRouter:
             "data": {
                 "task_id": task.task_id,
                 "linkid": task.linkid,
+                "session_id": task.session_id,
                 "title": _extract_title(task.request_body),
                 "path": task.path,
                 "status": task.status,
@@ -363,8 +413,6 @@ def create_admin_router(cfg: Config) -> APIRouter:
                 "request_response": _safe_parse(task.request_response),
                 "prompt": task.prompt,
                 "sdk_output": task.sdk_output,
-                "sdk_trace": _safe_parse(task.sdk_trace),
-                "sdk_stream": _safe_parse(task.sdk_stream),
                 "callback_body": _safe_parse(task.callback_body),
                 "callback_response": _safe_parse(task.callback_response),
             },
@@ -454,6 +502,7 @@ def create_admin_router(cfg: Config) -> APIRouter:
         if not user_name or not user_pwd:
             raise HTTPException(status_code=400, detail={"code": 1001, "message": "用户名和密码不能为空"})
 
+        from .auth import _validate_password_strength
         strength_err = _validate_password_strength(user_pwd)
         if strength_err:
             raise HTTPException(status_code=400, detail={"code": 1001, "message": strength_err})
@@ -485,16 +534,3 @@ def create_admin_router(cfg: Config) -> APIRouter:
         return {"code": 0, "message": "已删除"}
 
     return router
-
-
-def _iface_to_dict(iface: Any) -> dict:
-    return {
-        "id": iface.id,
-        "name": iface.name,
-        "path": iface.path,
-        "prompt": iface.prompt,
-        "created_at": iface.created_at,
-        "updated_at": iface.updated_at,
-        "created_ts": iface.created_ts,
-        "updated_ts": iface.updated_ts,
-    }

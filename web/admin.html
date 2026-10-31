@@ -103,23 +103,11 @@
                 <h2><i class="fas fa-list-alt"></i> 任务监控</h2>
                 <div class="table-scroll">
 <table class="result-table">
-                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">执行过程</th><th class="col-action">执行结果</th></tr></thead>
+                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>LinkID</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">会话记录</th></tr></thead>
                     <tbody id="tasksTbody"><tr><td colspan="8" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
 </div>
                 <div id="tasksPager" class="pager" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:12px;"></div>
-
-                <!-- 执行过程 — 终端风格弹窗 -->
-                <div id="streamModal" class="modal-overlay">
-                    <div class="modal-lg stream-modal-body" style="display:flex;flex-direction:column;">
-                        <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-                            <span id="streamModalTitle"><i class="fas fa-terminal"></i> 任务执行过程</span>
-                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeStreamModal()" style="margin-left:auto;">关闭</button>
-                        </h3>
-                        <div id="streamStatus" class="stream-status-bar"></div>
-                        <pre id="streamMessages" class="stream-terminal term-box"></pre>
-                    </div>
-                </div>
 
                 <!-- 执行结果 — 详情弹窗 -->
                 <div id="taskModal" class="modal-overlay">
@@ -133,11 +121,23 @@
                 </div>
             </div>
 
-                <!-- ========== 任务审查 ========== -->
+                
+                <!-- 会话记录弹窗（复用 stream 风格） -->
+                <div id="streamModal" class="modal-overlay">
+                    <div class="modal-lg stream-modal-body" style="display:flex;flex-direction:column;">
+                        <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                            <span id="streamModalTitle"><i class="fas fa-comments"></i> 会话记录</span>
+                            <button type="button" id="streamExportBtn" class="cfg-btn cfg-btn-sm" onclick="exportStreamMD()" style="display:none;margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
+                            <button type="button" class="cfg-btn-sm" onclick="closeStreamModal()"><i class="fas fa-times"></i> 关闭</button>
+                        </h3>
+                        <div id="streamStatus" class="stream-status-bar"></div>
+                        <pre id="streamMessages" class="stream-terminal term-box"></pre>
+                    </div>
+                </div>
+<!-- ========== 任务审查 ========== -->
                 <div class="cfg-section" id="section-audit">
                     <h2><i class="fas fa-search"></i> 任务审查</h2>
-                    <p style="color:#888;margin-bottom:16px;">按 Task ID 或 Link ID 查询智能体完整工作过程。</p>
-
+                    
                     <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:flex-end;">
                         <div class="form-g" style="margin-bottom:0;flex:1;min-width:220px;">
                             <label>Task ID</label>
@@ -157,8 +157,8 @@
 
                     <div class="table-scroll">
 <table class="result-table">
-                        <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">时间线</th></tr></thead>
-                        <tbody id="auditTbody"><tr><td colspan="7" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                        <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>LinkID</th><th>状态</th><th class="col-date">创建时间</th><th class="col-action">时间线</th></tr></thead>
+                        <tbody id="auditTbody"><tr><td colspan="9" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                     </table>
 </div>
                     <div id="auditPager" class="pager" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:12px;"></div>
@@ -168,8 +168,8 @@
                         <div class="modal-lg" style="width:min(1280px, calc(100vw - 40px));display:flex;flex-direction:column;">
                             <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
                                 <span><i class="fas fa-history"></i> 任务执行时间线</span>
-                                <button type="button" class="cfg-btn cfg-btn-primary" onclick="exportAuditMd()" style="margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
-                                <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeAuditDetail()"><i class="fas fa-times"></i> 关闭</button>
+                                <button type="button" class="cfg-btn-sm" onclick="exportAuditMd()" style="margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
+                                <button type="button" class="cfg-btn-sm" onclick="closeAuditDetail()"><i class="fas fa-times"></i> 关闭</button>
                             </h3>
                             <div id="auditDetailContent" style="margin-top:20px;flex:1;min-height:0;display:flex;flex-direction:column;"></div>
                         </div>
@@ -442,11 +442,11 @@ function renderTasksPage(list) {
             <td class="col-seq">${no}</td>
             <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
             <td>${escHtml(t.path || '-')}</td>
+            <td><code style="font-size:0.78rem;">${escHtml((t.linkid || '-').substring(0,8))}...</code></td>
             <td>${statusText(t.status)}</td>
             <td class="col-date">${fmtTs(t.created_at)}</td>
             <td class="col-date">${fmtTs(t.finished_at)}</td>
-            <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewStream('${taskId}')" title="执行过程"><i class="fas fa-comments"></i></button></td>
-            <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewTask('${taskId}')" title="执行结果"><i class="fas fa-clipboard-check"></i></button></td>
+            <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewSession('${escHtml(t.session_id || '')}', '${taskId}', '${escHtml(t.status || '')}')" title="会话记录"><i class="fas fa-comments"></i></button></td>
         </tr>
         <tr class="row-detail" id="${rid}" style="display:none;">
             <td colspan="8" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
@@ -475,7 +475,7 @@ function taskDetailHtml(t) {
     // 信息头 — 固定不动
     let html = '<div class="task-info-bar" style="flex-shrink:0;">' +
         '<div class="task-info-row"><span class="task-info-label">标题：</span>' + escHtml(t.title || '-') + '</div>' +
-        '<div class="task-info-row"><span class="task-info-label">Task ID：</span>' + escHtml(t.task_id) + '<span class="task-info-label" style="margin-left:8px;">LinkID：</span>' + escHtml(t.linkid || '-') + '</div>' +
+        '<div class="task-info-row"><span class="task-info-label">Task ID：</span>' + escHtml(t.task_id) + '<span class="task-info-label" style="margin-left:8px;">LinkID：</span>' + escHtml(t.linkid || '-') + '<span class="task-info-label" style="margin-left:8px;">Session：</span>' + escHtml((t.session_id || '-').substring(0,8)) + '</div>' +
         '<div class="task-info-row"><span class="task-info-label">访问路径：</span>' + escHtml(t.path || '-') + '<span class="task-info-label" style="margin-left:8px;">状态：</span>' + statusText(t.status) + '</div>' +
         '<div class="task-info-row"><span class="task-info-label">创建：</span>' + fmtTs(t.created_at) + '<span class="task-info-label" style="margin-left:8px;">完成：</span>' + fmtTs(t.finished_at) + '</div>' +
         (errMsg ? '<div class="task-info-row" style="color:#c62828;"><span class="task-info-label">错误信息：</span>' + escHtml(errMsg) + '</div>' : '') +
@@ -490,8 +490,6 @@ function taskDetailHtml(t) {
     html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(t.prompt || '(未记录)') + '</div>';
     html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. Agent 输出 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
     html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(t.sdk_output || '(未记录)') + '</div>';
-    html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. SDK 调用追踪 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
-    html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(jsonFmt(t.sdk_trace)) + '</div>';
     html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. 回调体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
     html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(jsonFmt(t.callback_body)) + '</div>';
     html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> ' + (++step) + '. 回调体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
@@ -501,115 +499,125 @@ function taskDetailHtml(t) {
 }
 
 // ==============================
-// 实时执行过程 — 对话风格
+document.getElementById('auditDetailModal').addEventListener('click', function(e) { if (e.target === this) closeAuditDetail(); });
+document.getElementById('streamModal').addEventListener('click', function(e) { if (e.target === this) closeStreamModal(); });
+
+// Init
+initNav();
+loadSysConfig();
+
+// ==== Utilities ====
+function escHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtTs(s) { if (!s) return '-'; /* 数据库 created_at / finished_at 为 ISO，格式化为秒 */ try { const d = new Date(s); if (isNaN(d.getTime())) return s; const p = (n) => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); } catch { return s; } }
+/** 时间线用：保留毫秒。已格式化的时间直接返回，否则从 ISO 转换 */
+function fmtTimelineTs(s) { if (!s) return ''; if (/^\d{2}:\d{2}:\d{2}/.test(s)) return s; /* 旧 HH:MM:ss.SSS */ if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s)) return s; /* 已是 YYYY-MM-DD HH:MM:ss(.SSS) */ try { const d = new Date(s); if (isNaN(d.getTime())) return s; const p = (n) => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' + String(d.getMilliseconds()).padStart(3,'0'); } catch { return s; } }
+function jsonFmt(v) { if (typeof v === 'string') try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; } return JSON.stringify(v, null, 2); }
+function statusText(s) {
+    const map = {
+        pending: '排队中',
+        processing: '处理中',
+        failed: '失败',
+        completed: '已完成',
+        callback_fail: '回调失败',
+        cancelled: '已取消',
+    };
+    return map[s] || s || '-';
+}
+
+// Close modal on overlay click
+document.getElementById('ifaceModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+document.getElementById('taskModal').addEventListener('click', function(e) { if (e.target === this) closeTaskModal(); });
+document.getElementById('streamModal').addEventListener('click', function(e) { if (e.target === this) closeStreamModal(); });
+
+// Close modal on ESC
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        if (document.getElementById('ifaceModal').classList.contains('show')) closeModal();
+        if (document.getElementById('taskModal').classList.contains('show')) closeTaskModal();
+        if (document.getElementById('streamModal').classList.contains('show')) closeStreamModal();
+        if (document.getElementById('auditDetailModal').classList.contains('show')) closeAuditDetail();
+    }
+});
+
+// 终端黑框：鼠标悬停时 Ctrl+A 全选框内、Ctrl+C 复制框内
+function selectTermBox(box) {
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+}
+
+// 追踪当前鼠标悬停的终端框（keydown 的 e.target 是焦点元素，不代表鼠标位置）
+let _hoveredTermBox = null;
+document.addEventListener('mouseover', function(e) {
+    _hoveredTermBox = e.target.closest('.term-box');
+});
+document.addEventListener('mouseout', function(e) {
+    const box = e.target.closest('.term-box');
+    if (box && !box.contains(e.relatedTarget)) _hoveredTermBox = null;
+});
+
+document.addEventListener('keydown', function(e) {
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+
+    const box = _hoveredTermBox;
+    if (!box) return;
+
+    if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        selectTermBox(box);
+        return;
+    }
+
+    if (e.key === 'c' || e.key === 'C') {
+        const sel = window.getSelection();
+        const hasSelection = sel && !sel.isCollapsed &&
+            box.contains(sel.anchorNode) && box.contains(sel.focusNode);
+        if (!hasSelection) {
+            e.preventDefault();
+            selectTermBox(box);
+        }
+        try {
+            document.execCommand('copy');
+            toast('已复制框内内容');
+        } catch (err) {
+            toast('复制失败', 'error');
+        }
+    }
+});
+
 // ==============================
-let _streamPollTimer = null;
-let _streamTaskId = null;
-let _streamCount = 0;           // 已渲染的消息条数，用于增量追加
 
-function closeStreamModal() {
-    clearInterval(_streamPollTimer);
-    _streamPollTimer = null;
-    _streamTaskId = null;
-    _streamCount = 0;
-    document.getElementById('streamModal').classList.remove('show');
-}
-
-async function viewStream(taskId) {
-    _streamTaskId = taskId;
-    _streamCount = 0;
-    document.getElementById('streamMessages').textContent = '加载中...';
-    document.getElementById('streamStatus').innerHTML = '';
-    document.getElementById('streamStatus').className = 'stream-status-bar';
-    document.getElementById('streamModalTitle').innerHTML = '<i class="fas fa-terminal"></i> 任务执行过程 <span style="font-weight:400;font-size:0.8rem;color:#888;">' + escHtml(taskId.slice(0,8)) + '...</span>';
-    document.getElementById('streamModal').classList.add('show');
-
-    await pollStream();
-
-    // 如果任务还在跑，开始轮询
-    clearInterval(_streamPollTimer);
-    _streamPollTimer = setInterval(pollStream, 1500);
-}
-
-async function pollStream() {
-    if (!_streamTaskId) return;
-    try {
-        const res = await fetch(API + '/tasks/' + encodeURIComponent(_streamTaskId) + '/stream');
-        const json = await res.json();
-        if (!json.data) return;
-
-        const { status, stream } = json.data;
-        const entries = Array.isArray(stream) ? stream : [];
-
-        // 增量渲染：仅追加 _streamCount 之后的新条目
-        if (entries.length > _streamCount) {
-            const newEntries = entries.slice(_streamCount);
-            appendStreamEntries(newEntries);
-            _streamCount = entries.length;
+function toggleTimelineDetail(header) {
+    const detail = header.nextElementSibling;
+    if (detail && detail.classList.contains('timeline-detail')) {
+        const toggle = header.querySelector('.timeline-toggle');
+        if (detail.style.display === 'none') {
+            detail.style.display = '';
+            toggle.className = 'fas fa-chevron-down timeline-toggle';
+        } else {
+            detail.style.display = 'none';
+            toggle.className = 'fas fa-chevron-right timeline-toggle';
         }
-
-        // 更新状态栏
-        const statusEl = document.getElementById('streamStatus');
-        if (status === 'processing') {
-            statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 执行中...';
-            statusEl.className = 'stream-status-bar stream-status-live';
-        } else if (status === 'completed') {
-            statusEl.innerHTML = '<i class="fas fa-check-circle"></i> 执行完成';
-            statusEl.className = 'stream-status-bar stream-status-done';
-            clearInterval(_streamPollTimer);
-            _streamPollTimer = null;
-        } else if (status === 'failed' || status === 'callback_fail') {
-            statusEl.innerHTML = '<i class="fas fa-times-circle"></i> 执行失败';
-            statusEl.className = 'stream-status-bar stream-status-done';
-            clearInterval(_streamPollTimer);
-            _streamPollTimer = null;
-        }
-    } catch (e) {
-        // 静默重试
     }
 }
 
-function appendStreamEntries(entries) {
-    const container = document.getElementById('streamMessages');
-    // 首次追加时清空 loading 占位
-    if (_streamCount === 0) container.textContent = '';
-
-    for (const entry of entries) {
-        const ts = entry.ts ? '[' + entry.ts + '] ' : '';
-        let line = '';
-
-        switch (entry.type) {
-            case 'text':
-                line = ts + entry.text;
-                break;
-            case 'tool':
-                line = ts + 'TOOL ' + (entry.tool_name || '') + ': ' + entry.text
-                    + (entry.tool_input ? '\n' + entry.tool_input : '');
-                break;
-            case 'tool_result':
-                line = ts + 'RESULT: ' + entry.text;
-                if (entry.tool_output) line += '\n' + entry.tool_output;
-                break;
-            case 'system':
-                line = ts + entry.text;
-                if (entry.tool_input) line += '\n' + entry.tool_input;
-                break;
-            case 'error':
-                line = ts + 'ERROR: ' + entry.text;
-                if (entry.tool_output) line += '\n' + entry.tool_output;
-                break;
-            default:
-                line = ts + (entry.text || '');
+function toggleTaskDetail(section) {
+    const detail = section.nextElementSibling;
+    if (detail && detail.classList.contains('task-detail-json')) {
+        const toggle = section.querySelector('.task-detail-toggle');
+        if (detail.style.display === 'none') {
+            detail.style.display = '';
+            if (toggle) toggle.className = 'fas fa-chevron-down task-detail-toggle';
+        } else {
+            detail.style.display = 'none';
+            if (toggle) toggle.className = 'fas fa-chevron-right task-detail-toggle';
         }
-
-        container.textContent += line + '\n';
     }
-
-    // 自动滚到底部
-    container.scrollTop = container.scrollHeight;
 }
 
-// ==== Simulate ====
 const DEFAULT_BODY = `{
   "linkid": "sim-xxx",
   "callback_url": "",
@@ -710,122 +718,6 @@ document.getElementById('simSubmit').addEventListener('click', async () => {
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-play"></i> 提交';
 });
-
-// ==== Utilities ====
-function escHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function fmtTs(s) { if (!s) return '-'; /* 数据库 created_at / finished_at 为 ISO，格式化为秒 */ try { const d = new Date(s); if (isNaN(d.getTime())) return s; const p = (n) => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); } catch { return s; } }
-/** 时间线用：保留毫秒。已格式化的时间直接返回，否则从 ISO 转换 */
-function fmtTimelineTs(s) { if (!s) return ''; if (/^\d{2}:\d{2}:\d{2}/.test(s)) return s; /* 旧 HH:MM:ss.SSS */ if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s)) return s; /* 已是 YYYY-MM-DD HH:MM:ss(.SSS) */ try { const d = new Date(s); if (isNaN(d.getTime())) return s; const p = (n) => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' + String(d.getMilliseconds()).padStart(3,'0'); } catch { return s; } }
-function jsonFmt(v) { if (typeof v === 'string') try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; } return JSON.stringify(v, null, 2); }
-function statusText(s) {
-    const map = {
-        pending: '排队中',
-        processing: '处理中',
-        failed: '失败',
-        completed: '已完成',
-        callback_fail: '回调失败',
-        cancelled: '已取消',
-    };
-    return map[s] || s || '-';
-}
-
-// Close modal on overlay click
-document.getElementById('ifaceModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
-document.getElementById('taskModal').addEventListener('click', function(e) { if (e.target === this) closeTaskModal(); });
-document.getElementById('streamModal').addEventListener('click', function(e) { if (e.target === this) closeStreamModal(); });
-
-// Close modal on ESC
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        if (document.getElementById('ifaceModal').classList.contains('show')) closeModal();
-        if (document.getElementById('taskModal').classList.contains('show')) closeTaskModal();
-        if (document.getElementById('streamModal').classList.contains('show')) closeStreamModal();
-        if (document.getElementById('auditDetailModal').classList.contains('show')) closeAuditDetail();
-    }
-});
-
-// 终端黑框：鼠标悬停时 Ctrl+A 全选框内、Ctrl+C 复制框内
-function selectTermBox(box) {
-    const range = document.createRange();
-    range.selectNodeContents(box);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-}
-
-// 追踪当前鼠标悬停的终端框（keydown 的 e.target 是焦点元素，不代表鼠标位置）
-let _hoveredTermBox = null;
-document.addEventListener('mouseover', function(e) {
-    _hoveredTermBox = e.target.closest('.term-box');
-});
-document.addEventListener('mouseout', function(e) {
-    const box = e.target.closest('.term-box');
-    if (box && !box.contains(e.relatedTarget)) _hoveredTermBox = null;
-});
-
-document.addEventListener('keydown', function(e) {
-    const mod = e.ctrlKey || e.metaKey;
-    if (!mod) return;
-
-    const box = _hoveredTermBox;
-    if (!box) return;
-
-    if (e.key === 'a' || e.key === 'A') {
-        e.preventDefault();
-        selectTermBox(box);
-        return;
-    }
-
-    if (e.key === 'c' || e.key === 'C') {
-        const sel = window.getSelection();
-        const hasSelection = sel && !sel.isCollapsed &&
-            box.contains(sel.anchorNode) && box.contains(sel.focusNode);
-        if (!hasSelection) {
-            e.preventDefault();
-            selectTermBox(box);
-        }
-        try {
-            document.execCommand('copy');
-            toast('已复制框内内容');
-        } catch (err) {
-            toast('复制失败', 'error');
-        }
-    }
-});
-
-document.getElementById('auditDetailModal').addEventListener('click', function(e) { if (e.target === this) closeAuditDetail(); });
-
-// Init
-initNav();
-loadSysConfig();
-
-function toggleTimelineDetail(header) {
-    const detail = header.nextElementSibling;
-    if (detail && detail.classList.contains('timeline-detail')) {
-        const toggle = header.querySelector('.timeline-toggle');
-        if (detail.style.display === 'none') {
-            detail.style.display = '';
-            toggle.className = 'fas fa-chevron-down timeline-toggle';
-        } else {
-            detail.style.display = 'none';
-            toggle.className = 'fas fa-chevron-right timeline-toggle';
-        }
-    }
-}
-
-function toggleTaskDetail(section) {
-    const detail = section.nextElementSibling;
-    if (detail && detail.classList.contains('task-detail-json')) {
-        const toggle = section.querySelector('.task-detail-toggle');
-        if (detail.style.display === 'none') {
-            detail.style.display = '';
-            if (toggle) toggle.className = 'fas fa-chevron-down task-detail-toggle';
-        } else {
-            detail.style.display = 'none';
-            if (toggle) toggle.className = 'fas fa-chevron-right task-detail-toggle';
-        }
-    }
-}
 
 function toggleSimCurl() {
     const curl = document.getElementById('simCurl');
@@ -998,7 +890,7 @@ function renderAuditPage(list) {
     const totalPages = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
     const tbody = document.getElementById('auditTbody');
     if (total === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:24px;">暂无记录</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:24px;">暂无记录</td></tr>';
         document.getElementById('auditPager').innerHTML = '';
         return;
     }
@@ -1013,13 +905,13 @@ function renderAuditPage(list) {
             <td class="col-seq">${no}</td>
             <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
             <td>${escHtml(t.path || '-')}</td>
+            <td><code style="font-size:0.78rem;">${escHtml((t.linkid || '-').substring(0,8))}...</code></td>
             <td>${statusText(t.status)}</td>
             <td class="col-date">${fmtTs(t.created_at)}</td>
-            <td class="col-date">${fmtTs(t.finished_at)}</td>
             <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewAuditDetail('${taskId}')" title="时间线"><i class="fas fa-history"></i></button></td>
         </tr>
         <tr class="row-detail" id="${rid}" style="display:none;">
-            <td colspan="7" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
+            <td colspan="9" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
                 <span class="audit-info-label">Task ID:</span> <code style="font-size:0.82rem;">${taskId}</code>
                 &nbsp;&nbsp;&nbsp;
                 <span class="audit-info-label">Link ID:</span> <code style="font-size:0.82rem;">${escHtml(t.linkid || '-')}</code>
@@ -1027,6 +919,251 @@ function renderAuditPage(list) {
         </tr>`;
     }).join('');
     document.getElementById('auditPager').innerHTML = pagerHtml(_auditPage, totalPages, 'loadAudit', _auditMode);
+}
+
+function closeStreamModal() {
+    if (_streamEs) { _streamEs.close(); _streamEs = null; }
+    _streamSessionId = null;
+    _streamCount = 0;
+    document.getElementById('streamModal').classList.remove('show');
+}
+
+// ---- 会话记录实时推送（SSE）----
+let _streamEs = null;         // EventSource 实例
+let _streamSessionId = null;
+let _streamCount = 0;         // 已渲染消息条数
+let _streamMessages = [];     // 原始消息数组，供导出使用
+
+function formatSessionMessages(messages, startSeq) {
+    let output = '';
+    let seq = startSeq;
+    for (const msg of messages) {
+        seq++;
+        const ts = msg.message?.timestamp || msg.timestamp || '';
+        const tsStr = ts ? fmtTimelineTs(ts) : '';
+        if (msg.type === 'user') {
+            output += '\n' + '='.repeat(60) + '\n[' + seq + '] ' + tsStr + ' [用户]\n';
+            const c = msg.message?.content;
+            if (typeof c === 'string') {
+                output += c + '\n';
+            } else if (Array.isArray(c)) {
+                for (const b of c) {
+                    if (b.type === 'text' && b.text) {
+                        output += b.text + '\n';
+                    } else if (b.type === 'tool_result') {
+                        output += '┌─ [工具返回]';
+                        if (b.tool_use_id) output += '  (' + b.tool_use_id + ')';
+                        output += '\n';
+                        if (b.content) {
+                            if (typeof b.content === 'string') {
+                                output += '│ ' + b.content.replace(/\n/g, '\n│ ') + '\n';
+                            } else if (Array.isArray(b.content)) {
+                                for (const cb of b.content) {
+                                    if (cb.type === 'text' && cb.text) output += '│ ' + cb.text.replace(/\n/g, '\n│ ') + '\n';
+                                }
+                            }
+                        }
+                        output += '└─\n';
+                    }
+                }
+            }
+        } else if (msg.type === 'assistant') {
+            output += '\n' + '-'.repeat(60) + '\n[' + seq + '] ' + tsStr + ' [助手]\n';
+            const c = msg.message?.content;
+            if (typeof c === 'string') {
+                output += c + '\n';
+            } else if (Array.isArray(c)) {
+                for (const b of c) {
+                    if (b.type === 'text' && b.text) {
+                        output += b.text + '\n';
+                    } else if (b.type === 'tool_use') {
+                        output += '┌─ >> 工具调用: ' + (b.name || '?');
+                        if (b.id) output += '  (' + b.id + ')';
+                        output += '\n';
+                        if (b.input) {
+                            output += '│ ' + JSON.stringify(b.input, null, 2).replace(/\n/g, '\n│ ') + '\n';
+                        }
+                        output += '└─\n';
+                    } else if (b.type === 'thinking' && b.thinking) {
+                        output += '┌─ 🤔 思考:\n';
+                        output += '│ ' + b.thinking.replace(/\n/g, '\n│ ') + '\n';
+                        output += '└─\n';
+                    } else if (b.type === 'redacted_thinking') {
+                        output += '┌─ 🤔 思考 (已过滤): 内容不可见\n└─\n';
+                    }
+                }
+            }
+        }
+    }
+    return { output, endSeq: seq };
+}
+
+function mdCodeBlock(text, lang) {
+    // 动态围栏：外层反引号数比内容里最长的连续反引号串多 1，避免内容中的 ``` 提前闭合
+    let maxRun = 0, run = 0;
+    for (const ch of text) {
+        if (ch === '`') { run++; if (run > maxRun) maxRun = run; }
+        else run = 0;
+    }
+    const fence = '`'.repeat(Math.max(3, maxRun + 1));
+    return fence + (lang || '') + '\n' + text + '\n' + fence + '\n\n';
+}
+
+function formatSessionMessagesMD(messages, sessionId) {
+    let md = '# 会话记录 ' + sessionId + '\n\n';
+    let seq = 0;
+    for (const msg of messages) {
+        seq++;
+        const ts = msg.message?.timestamp || msg.timestamp || '';
+        const tsStr = ts ? fmtTimelineTs(ts) : '';
+        const roleLabel = msg.type === 'user' ? '用户' : msg.type === 'assistant' ? '助手' : msg.type;
+        md += '## [' + seq + '] ' + tsStr + ' [' + roleLabel + ']\n\n';
+        const c = msg.message?.content;
+        if (typeof c === 'string') {
+            md += mdCodeBlock(c);
+        } else if (Array.isArray(c)) {
+            for (const b of c) {
+                if (b.type === 'text' && b.text) {
+                    md += mdCodeBlock(b.text);
+                } else if (b.type === 'tool_use') {
+                    md += '> >> 工具调用: ' + (b.name || '?');
+                    if (b.id) md += '  (' + b.id + ')';
+                    md += '\n>\n';
+                    if (b.input) {
+                        md += mdCodeBlock(JSON.stringify(b.input, null, 2), 'json');
+                    }
+                } else if (b.type === 'tool_result') {
+                    md += '> [工具返回]';
+                    if (b.tool_use_id) md += '  (' + b.tool_use_id + ')';
+                    md += '\n>\n';
+                    let toolText = '';
+                    if (typeof b.content === 'string') {
+                        toolText = b.content;
+                    } else if (Array.isArray(b.content)) {
+                        for (const cb of b.content) {
+                            if (cb.type === 'text' && cb.text) toolText += cb.text;
+                        }
+                    }
+                    if (toolText) {
+                        md += mdCodeBlock(toolText);
+                    } else {
+                        md += '\n';
+                    }
+                } else if (b.type === 'thinking' && b.thinking) {
+                    md += '> 🤔 思考:\n>\n';
+                    md += mdCodeBlock(b.thinking);
+                } else if (b.type === 'redacted_thinking') {
+                    md += '> 🤔 思考 (已过滤): 内容不可见\n\n';
+                }
+            }
+        }
+    }
+    return md;
+}
+
+function exportStreamMD() {
+    if (!_streamMessages || _streamMessages.length === 0) {
+        return toast('没有可导出的消息', 'error');
+    }
+    const sessionId = _streamSessionId || 'session';
+    // 文件名只用前 8 位，避免过长
+    const shortId = sessionId.length > 8 ? sessionId.substring(0, 8) : sessionId;
+    const hostname = window.location.hostname || 'localhost';
+    const filename = 'session_' + shortId + '_' + hostname + '.md';
+    const md = formatSessionMessagesMD(_streamMessages, sessionId);
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('已导出: ' + filename, 'success');
+}
+
+async function viewSession(sessionId, taskId, taskStatus) {
+    if (!sessionId) return toast('该任务无关联 Session', 'error');
+
+    // 关闭上一次的 SSE 连接
+    if (_streamEs) { _streamEs.close(); _streamEs = null; }
+    _streamSessionId = sessionId;
+    _streamCount = 0;
+
+    document.getElementById('streamModalTitle').innerHTML = '<i class="fas fa-comments"></i> 会话记录 <span style="font-weight:400;font-size:0.8rem;color:#888;">' + escHtml(sessionId) + '</span>';
+    document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">加载中...</span>';
+    document.getElementById('streamStatus').className = 'stream-status-bar';
+
+    // 隐藏导出按钮（加载完成后显示）
+    const exportBtn = document.getElementById('streamExportBtn');
+    if (exportBtn) exportBtn.style.display = 'none';
+
+    const container = document.getElementById('streamMessages');
+    container.textContent = '加载中...';
+    document.getElementById('streamModal').classList.add('show');
+
+    const active = ['pending', 'processing'].includes(taskStatus);
+
+    if (!active) {
+        // 任务已结束：一次性拉取完整历史
+        try {
+            const res = await fetch(API + '/sessions/' + encodeURIComponent(sessionId) + '/messages');
+            const json = await res.json();
+            const data = json.data || {};
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+            _streamMessages = messages;
+            const { output } = formatSessionMessages(messages, 0);
+            container.textContent = output || '(空会话)';
+            _streamCount = messages.length;
+            if (exportBtn) exportBtn.style.display = '';
+            document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
+            document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
+        } catch (err) {
+            container.textContent = '读取会话记录失败: ' + err.message;
+        }
+        return;
+    }
+
+    // 任务处理中：订阅 SSE，实时接收快照 + 增量消息
+    const es = new EventSource(API + '/sessions/' + encodeURIComponent(sessionId) + '/stream');
+    _streamEs = es;
+
+    es.onmessage = (e) => {
+        let msg;
+        try { msg = JSON.parse(e.data); } catch { return; }
+
+        // 快照：全量历史
+        if (msg.type === 'snapshot') {
+            const messages = Array.isArray(msg.messages) ? msg.messages : [];
+            _streamMessages = messages;
+            const { output } = formatSessionMessages(messages, 0);
+            container.textContent = output || '(空会话)';
+            _streamCount = messages.length;
+            if (exportBtn) exportBtn.style.display = '';
+            document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
+            document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
+            container.scrollTop = container.scrollHeight;
+        } else if (msg.type === 'error') {
+            container.textContent = '读取会话记录失败: ' + (msg.message || '');
+        } else {
+            // 增量单条消息（SDK 原生消息）
+            _streamMessages.push(msg);
+            const { output } = formatSessionMessages([msg], _streamCount);
+            container.textContent += output;
+            _streamCount++;
+            if (exportBtn) exportBtn.style.display = '';
+            document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + _streamCount + ' 条消息</span>';
+            container.scrollTop = container.scrollHeight;
+        }
+    };
+
+    es.onerror = () => {
+        // SSE 连接错误（如任务已结束导致服务端关闭连接），保持已显示内容
+        if (_streamEs === es) {
+            _streamEs = null;
+        }
+    };
 }
 
 function toggleRowDetail(rid) {
@@ -1118,20 +1255,7 @@ function buildAuditEvents(t) {
     if (t.prompt) {
         events.push({ time: t.created_at, type: 'prompt', title: '渲染提示词', detail: t.prompt });
     }
-    // 5. 智能体执行过程（流式）
-    if (t.sdk_stream && Array.isArray(t.sdk_stream)) {
-        for (const entry of t.sdk_stream) {
-            const label = entry.type === 'tool' ? '调用工具 ' + (entry.tool_name || '')
-                : entry.type === 'tool_result' ? '工具返回'
-                : entry.type === 'system' ? '系统消息'
-                : entry.type === 'error' ? '错误'
-                : '智能体输出';
-            let detail = entry.text || '';
-            if (entry.tool_input) detail += '\n\n---- 工具输入 ----\n' + entry.tool_input;
-            if (entry.tool_output) detail += '\n\n---- 工具输出 ----\n' + entry.tool_output;
-            events.push({ time: entry.ts || null, type: entry.type || 'text', title: label, detail });
-        }
-    }
+    // 5. Agent 输出结果（查看上方「对话」按钮可获取完整 SDK 对话记录）
     // 6. Agent 最终输出
     if (t.sdk_output) {
         events.push({ time: t.finished_at, type: 'output', title: 'Agent 输出结果', detail: t.sdk_output });
